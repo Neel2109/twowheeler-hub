@@ -88,7 +88,7 @@ export default function Dashboard() {
                       <div className="flex items-center gap-4">
                         <div>
                           <span className="font-mono text-sm font-semibold">{order.roNumber}</span>
-                          <p className="text-xs text-muted-foreground">{order.customerName} • {order.vehicleNumber}</p>
+                          <p className="text-xs text-muted-foreground">{order.customerName} • {order.vehicleNumber}{order.assignedMechanic ? ` • 🔧 ${order.assignedMechanic}` : ''}</p>
                         </div>
                       </div>
                       <div className="flex items-center gap-4">

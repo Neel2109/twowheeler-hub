@@ -29,6 +29,9 @@ export function generateRepairOrderPDF(order: RepairOrder) {
   doc.text(`RO Number: ${order.roNumber}`, 14, y);
   doc.text(`Date: ${new Date(order.dateIn).toLocaleDateString('en-IN')}`, 140, y);
   doc.text(`Status: ${order.status}`, 14, y + 7);
+  if (order.assignedMechanic) {
+    doc.text(`Mechanic: ${order.assignedMechanic}`, 80, y + 7);
+  }
   if (order.expectedDeliveryDate) {
     doc.text(`Expected Delivery: ${new Date(order.expectedDeliveryDate).toLocaleDateString('en-IN')}`, 140, y + 7);
   }

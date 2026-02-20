@@ -114,22 +114,31 @@
   }
 
   .status-open {
-    @apply bg-info/15 text-info border-info/30;
+    background-color: hsl(var(--info) / 0.15);
+    color: hsl(var(--info));
+    border-color: hsl(var(--info) / 0.3);
   }
 
   .status-in-progress {
-    @apply bg-warning/15 text-warning border-warning/30;
+    background-color: hsl(var(--warning) / 0.15);
+    color: hsl(var(--warning));
+    border-color: hsl(var(--warning) / 0.3);
   }
 
   .status-waiting {
-    @apply bg-destructive/15 text-destructive border-destructive/30;
+    background-color: hsl(var(--destructive) / 0.15);
+    color: hsl(var(--destructive));
+    border-color: hsl(var(--destructive) / 0.3);
   }
 
   .status-ready {
-    @apply bg-success/15 text-success border-success/30;
+    background-color: hsl(var(--success) / 0.15);
+    color: hsl(var(--success));
+    border-color: hsl(var(--success) / 0.3);
   }
 
   .status-delivered {
-    @apply bg-muted text-muted-foreground border-border;
+    @apply bg-muted text-muted-foreground;
+    border-color: hsl(var(--border));
   }
 }

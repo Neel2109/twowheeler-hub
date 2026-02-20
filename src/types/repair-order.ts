@@ -35,12 +35,17 @@ export interface RepairOrder {
   serviceDetails: string;
   remarks: string;
   status: ROStatus;
+  assignedMechanic: string;
   spareParts: SparePart[];
   laborCharges: LaborCharge[];
   discount: number;
   createdAt: string;
   updatedAt: string;
 }
+
+export const MECHANICS = [
+  'Ramesh', 'Suresh', 'Mahesh', 'Kiran', 'Vijay', 'Anil'
+];
 
 export const BRANDS = [
   'Honda', 'TVS', 'Bajaj', 'Hero', 'Royal Enfield', 'Yamaha',
