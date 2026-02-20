@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { RepairOrder, VehicleType, FuelLevel, SparePart, LaborCharge, BRANDS, STATUS_OPTIONS, ROStatus } from '@/types/repair-order';
+import { RepairOrder, VehicleType, FuelLevel, SparePart, LaborCharge, BRANDS, STATUS_OPTIONS, ROStatus, MECHANICS } from '@/types/repair-order';
 import { generateRONumber, addRepairOrder, updateRepairOrder, calculateTotals } from '@/lib/repair-orders';
 import { generateRepairOrderPDF } from '@/lib/pdf-generator';
 import { Button } from '@/components/ui/button';
@@ -39,6 +39,7 @@ export function ROForm({ existing }: Props) {
     serviceDetails: existing?.serviceDetails || '',
     remarks: existing?.remarks || '',
     status: existing?.status || 'Open',
+    assignedMechanic: existing?.assignedMechanic || '',
     spareParts: existing?.spareParts || [],
     laborCharges: existing?.laborCharges || [],
     discount: existing?.discount || 0,
@@ -234,17 +235,28 @@ export function ROForm({ existing }: Props) {
           <CardTitle className="text-base">Service Information</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          {isEdit && (
+          <div className="grid grid-cols-2 gap-3">
+            {isEdit && (
+              <div>
+                <Label>Status</Label>
+                <Select value={form.status} onValueChange={v => update('status', v)} disabled={isDelivered}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {STATUS_OPTIONS.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             <div>
-              <Label>Status</Label>
-              <Select value={form.status} onValueChange={v => update('status', v)} disabled={isDelivered}>
-                <SelectTrigger className="w-52"><SelectValue /></SelectTrigger>
+              <Label>Assigned Mechanic</Label>
+              <Select value={form.assignedMechanic} onValueChange={v => update('assignedMechanic', v)} disabled={isDelivered}>
+                <SelectTrigger><SelectValue placeholder="Select mechanic" /></SelectTrigger>
                 <SelectContent>
-                  {STATUS_OPTIONS.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                  {MECHANICS.map(m => <SelectItem key={m} value={m}>{m}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
-          )}
+          </div>
           <div>
             <Label>Customer Complaints</Label>
             <Textarea value={form.customerComplaints} onChange={e => update('customerComplaints', e.target.value)} rows={3} disabled={isDelivered} />

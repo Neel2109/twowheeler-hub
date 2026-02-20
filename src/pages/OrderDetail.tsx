@@ -70,7 +70,7 @@ export default function OrderDetail() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <Card>
           <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Customer</CardTitle></CardHeader>
           <CardContent>
@@ -83,6 +83,12 @@ export default function OrderDetail() {
           <CardContent>
             <p className="font-semibold text-lg">{order.vehicleNumber}</p>
             <p className="text-sm text-muted-foreground">{order.vehicleType} • {order.brand} {order.model} • {order.odometerReading} KM • Fuel: {order.fuelLevel}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Assigned Mechanic</CardTitle></CardHeader>
+          <CardContent>
+            <p className="font-semibold text-lg">{order.assignedMechanic || 'Not assigned'}</p>
           </CardContent>
         </Card>
       </div>
