@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { RepairOrder, VehicleType, FuelLevel, SparePart, LaborCharge, BRANDS, STATUS_OPTIONS, ROStatus, MECHANICS } from '@/types/repair-order';
+import { RepairOrder, VehicleType, SparePart, LaborCharge, BRANDS, STATUS_OPTIONS, ROStatus } from '@/types/repair-order';
 import { generateRONumber, addRepairOrder, updateRepairOrder, calculateTotals } from '@/lib/repair-orders';
 import { generateRepairOrderPDF } from '@/lib/pdf-generator';
 import { Button } from '@/components/ui/button';
@@ -24,22 +24,16 @@ export function ROForm({ existing }: Props) {
 
   const [form, setForm] = useState<Omit<RepairOrder, 'id' | 'roNumber' | 'createdAt' | 'updatedAt'>>({
     dateIn: existing?.dateIn || new Date().toISOString().split('T')[0],
-    expectedDeliveryDate: existing?.expectedDeliveryDate || '',
     customerName: existing?.customerName || '',
     mobileNumber: existing?.mobileNumber || '',
     vehicleNumber: existing?.vehicleNumber || '',
     vehicleType: existing?.vehicleType || 'Bike',
     brand: existing?.brand || '',
     model: existing?.model || '',
-    engineNumber: existing?.engineNumber || '',
-    chassisNumber: existing?.chassisNumber || '',
-    odometerReading: existing?.odometerReading || 0,
-    fuelLevel: existing?.fuelLevel || 'Full',
     customerComplaints: existing?.customerComplaints || '',
     serviceDetails: existing?.serviceDetails || '',
     remarks: existing?.remarks || '',
     status: existing?.status || 'Open',
-    assignedMechanic: existing?.assignedMechanic || '',
     spareParts: existing?.spareParts || [],
     laborCharges: existing?.laborCharges || [],
     discount: existing?.discount || 0,
@@ -150,15 +144,9 @@ export function ROForm({ existing }: Props) {
                 <Input value={form.mobileNumber} onChange={e => update('mobileNumber', e.target.value)} disabled={isDelivered} />
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label>Date In</Label>
-                <Input type="date" value={form.dateIn} onChange={e => update('dateIn', e.target.value)} disabled={isDelivered} />
-              </div>
-              <div>
-                <Label>Expected Delivery</Label>
-                <Input type="date" value={form.expectedDeliveryDate} onChange={e => update('expectedDeliveryDate', e.target.value)} disabled={isDelivered} />
-              </div>
+            <div>
+              <Label>Date In</Label>
+              <Input type="date" value={form.dateIn} onChange={e => update('dateIn', e.target.value)} disabled={isDelivered} />
             </div>
           </CardContent>
         </Card>
@@ -169,7 +157,7 @@ export function ROForm({ existing }: Props) {
             <CardTitle className="text-base">Vehicle Details</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-2 gap-3">
               <div>
                 <Label>Vehicle No. *</Label>
                 <Input value={form.vehicleNumber} onChange={e => update('vehicleNumber', e.target.value.toUpperCase())} disabled={isDelivered} placeholder="MH12AB1234" />
@@ -184,19 +172,8 @@ export function ROForm({ existing }: Props) {
                   </SelectContent>
                 </Select>
               </div>
-              <div>
-                <Label>Fuel Level</Label>
-                <Select value={form.fuelLevel} onValueChange={v => update('fuelLevel', v)} disabled={isDelivered}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {(['Empty', '1/4', '1/2', 'Full'] as FuelLevel[]).map(f => (
-                      <SelectItem key={f} value={f}>{f}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
             </div>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-2 gap-3">
               <div>
                 <Label>Brand *</Label>
                 <Select value={form.brand} onValueChange={v => update('brand', v)} disabled={isDelivered}>
@@ -210,20 +187,6 @@ export function ROForm({ existing }: Props) {
                 <Label>Model *</Label>
                 <Input value={form.model} onChange={e => update('model', e.target.value)} disabled={isDelivered} />
               </div>
-              <div>
-                <Label>Odometer (KM) *</Label>
-                <Input type="number" value={form.odometerReading} onChange={e => update('odometerReading', Number(e.target.value))} disabled={isDelivered} />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label>Engine No.</Label>
-                <Input value={form.engineNumber} onChange={e => update('engineNumber', e.target.value)} disabled={isDelivered} />
-              </div>
-              <div>
-                <Label>Chassis No.</Label>
-                <Input value={form.chassisNumber} onChange={e => update('chassisNumber', e.target.value)} disabled={isDelivered} />
-              </div>
             </div>
           </CardContent>
         </Card>
@@ -235,28 +198,17 @@ export function ROForm({ existing }: Props) {
           <CardTitle className="text-base">Service Information</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          <div className="grid grid-cols-2 gap-3">
-            {isEdit && (
-              <div>
-                <Label>Status</Label>
-                <Select value={form.status} onValueChange={v => update('status', v)} disabled={isDelivered}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {STATUS_OPTIONS.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
+          {isEdit && (
             <div>
-              <Label>Assigned Mechanic</Label>
-              <Select value={form.assignedMechanic} onValueChange={v => update('assignedMechanic', v)} disabled={isDelivered}>
-                <SelectTrigger><SelectValue placeholder="Select mechanic" /></SelectTrigger>
+              <Label>Status</Label>
+              <Select value={form.status} onValueChange={v => update('status', v)} disabled={isDelivered}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {MECHANICS.map(m => <SelectItem key={m} value={m}>{m}</SelectItem>)}
+                  {STATUS_OPTIONS.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
-          </div>
+          )}
           <div>
             <Label>Customer Complaints</Label>
             <Textarea value={form.customerComplaints} onChange={e => update('customerComplaints', e.target.value)} rows={3} disabled={isDelivered} />
