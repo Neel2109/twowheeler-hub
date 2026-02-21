@@ -32,7 +32,7 @@ export default function OrderDetail() {
     </div>
   );
 
-  const { partsTotal, laborTotal, subtotal, finalAmount } = calculateTotals(order.spareParts, order.laborCharges, order.discount);
+  const { partsTotal, laborTotal, subtotal, taxableAmount, cgstAmount, sgstAmount, totalGST, finalAmount } = calculateTotals(order.spareParts, order.laborCharges, order.discount, order.gstInfo);
 
   const handleDelete = () => {
     if (confirm('Delete this repair order?')) {
@@ -108,13 +108,13 @@ export default function OrderDetail() {
           <CardContent>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead><tr className="border-b text-muted-foreground text-left"><th className="py-2">Part</th><th>Qty</th><th>Rate</th><th className="text-right">Total</th></tr></thead>
+                <thead><tr className="border-b text-muted-foreground text-left"><th className="py-2">Part</th><th>HSN</th><th>Qty</th><th>Rate</th><th className="text-right">Total</th></tr></thead>
                 <tbody>
                   {order.spareParts.map(p => (
-                    <tr key={p.id} className="border-b border-border/50"><td className="py-1.5">{p.partName}</td><td>{p.quantity}</td><td>₹{p.rate}</td><td className="text-right font-mono">₹{p.total.toFixed(2)}</td></tr>
+                    <tr key={p.id} className="border-b border-border/50"><td className="py-1.5">{p.partName}</td><td className="text-muted-foreground">{p.hsnCode || '-'}</td><td>{p.quantity}</td><td>₹{p.rate}</td><td className="text-right font-mono">₹{p.total.toFixed(2)}</td></tr>
                   ))}
                 </tbody>
-                <tfoot><tr><td colSpan={3} className="text-right font-semibold pt-2">Total:</td><td className="text-right font-mono font-semibold pt-2">₹{partsTotal.toFixed(2)}</td></tr></tfoot>
+                <tfoot><tr><td colSpan={4} className="text-right font-semibold pt-2">Total:</td><td className="text-right font-mono font-semibold pt-2">₹{partsTotal.toFixed(2)}</td></tr></tfoot>
               </table>
             </div>
           </CardContent>
@@ -141,16 +141,25 @@ export default function OrderDetail() {
         </Card>
       )}
 
-      {/* Billing */}
+      {/* GST & Billing */}
       <Card className="border-primary/30">
         <CardContent className="pt-5">
           <div className="flex flex-col items-end gap-1 text-sm">
+            {order.gstInfo?.garageGSTIN && (
+              <div className="flex gap-6 w-full mb-2 pb-2 border-b border-border/50 text-xs text-muted-foreground">
+                <span>GSTIN: {order.gstInfo.garageGSTIN}</span>
+                {order.gstInfo.customerGSTIN && <span>Customer GSTIN: {order.gstInfo.customerGSTIN}</span>}
+              </div>
+            )}
             <div className="flex gap-6"><span className="text-muted-foreground">Parts:</span><span className="font-mono">₹{partsTotal.toFixed(2)}</span></div>
             <div className="flex gap-6"><span className="text-muted-foreground">Labor:</span><span className="font-mono">₹{laborTotal.toFixed(2)}</span></div>
             <div className="flex gap-6"><span className="text-muted-foreground">Subtotal:</span><span className="font-mono">₹{subtotal.toFixed(2)}</span></div>
             <div className="flex gap-6"><span className="text-muted-foreground">Discount:</span><span className="font-mono">-₹{order.discount.toFixed(2)}</span></div>
+            <div className="flex gap-6"><span className="text-muted-foreground">Taxable Amount:</span><span className="font-mono">₹{taxableAmount.toFixed(2)}</span></div>
+            <div className="flex gap-6"><span className="text-muted-foreground">CGST ({order.gstInfo?.cgstRate ?? 9}%):</span><span className="font-mono">₹{cgstAmount.toFixed(2)}</span></div>
+            <div className="flex gap-6"><span className="text-muted-foreground">SGST ({order.gstInfo?.sgstRate ?? 9}%):</span><span className="font-mono">₹{sgstAmount.toFixed(2)}</span></div>
             <div className="flex gap-6 text-lg pt-2 border-t border-primary/30 mt-1">
-              <span className="font-bold text-primary">Final:</span>
+              <span className="font-bold text-primary">Final (Incl. GST):</span>
               <span className="font-mono font-bold text-primary">₹{finalAmount.toFixed(2)}</span>
             </div>
           </div>

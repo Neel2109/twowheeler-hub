@@ -5,8 +5,8 @@ import { calculateTotals } from '@/lib/repair-orders';
 
 export function generateRepairOrderPDF(order: RepairOrder) {
   const doc = new jsPDF();
-  const { partsTotal, laborTotal, subtotal, finalAmount } = calculateTotals(
-    order.spareParts, order.laborCharges, order.discount
+  const { partsTotal, laborTotal, subtotal, taxableAmount, cgstAmount, sgstAmount, totalGST, finalAmount } = calculateTotals(
+    order.spareParts, order.laborCharges, order.discount, order.gstInfo
   );
 
   // Header
@@ -15,18 +15,25 @@ export function generateRepairOrderPDF(order: RepairOrder) {
   doc.setTextColor(255, 165, 0);
   doc.setFontSize(22);
   doc.setFont('helvetica', 'bold');
-  doc.text('PATIDAR AUTO CARE', 105, 18, { align: 'center' });
+  doc.text('PATIDAR AUTO CARE', 105, 15, { align: 'center' });
   doc.setFontSize(10);
   doc.setTextColor(200, 200, 200);
-  doc.text('Two-Wheeler Service Center', 105, 26, { align: 'center' });
-  doc.text('Repair Order', 105, 33, { align: 'center' });
+  doc.text('Two-Wheeler Service Center', 105, 23, { align: 'center' });
+  doc.setFontSize(12);
+  doc.setTextColor(255, 165, 0);
+  doc.text('TAX INVOICE', 105, 33, { align: 'center' });
+  if (order.gstInfo?.garageGSTIN) {
+    doc.setFontSize(8);
+    doc.setTextColor(200, 200, 200);
+    doc.text(`GSTIN: ${order.gstInfo.garageGSTIN}`, 105, 38, { align: 'center' });
+  }
 
   // RO Info
   doc.setTextColor(50, 50, 50);
   doc.setFontSize(11);
   doc.setFont('helvetica', 'bold');
   let y = 50;
-  doc.text(`RO Number: ${order.roNumber}`, 14, y);
+  doc.text(`Invoice No: ${order.roNumber}`, 14, y);
   doc.text(`Date: ${new Date(order.dateIn).toLocaleDateString('en-IN')}`, 140, y);
   doc.text(`Status: ${order.status}`, 14, y + 7);
 
@@ -47,6 +54,9 @@ export function generateRepairOrderPDF(order: RepairOrder) {
   doc.setFont('helvetica', 'normal');
   doc.text(`Type: ${order.vehicleType}`, 110, y + 10);
   doc.text(`${order.brand} ${order.model}`, 110, y + 17);
+  if (order.gstInfo?.customerGSTIN) {
+    doc.text(`Customer GSTIN: ${order.gstInfo.customerGSTIN}`, 110, y + 24);
+  }
 
   // Complaints
   y = 112;
@@ -69,16 +79,16 @@ export function generateRepairOrderPDF(order: RepairOrder) {
     y += 10 + details.length * 5;
   }
 
-  // Parts table
+  // Parts table with HSN
   if (order.spareParts.length > 0) {
     y += 5;
     autoTable(doc, {
       startY: y,
-      head: [['#', 'Part Name', 'Qty', 'Rate (₹)', 'Total (₹)']],
+      head: [['#', 'Part Name', 'HSN Code', 'Qty', 'Rate (₹)', 'Total (₹)']],
       body: order.spareParts.map((p, i) => [
-        i + 1, p.partName, p.quantity, p.rate.toFixed(2), p.total.toFixed(2)
+        i + 1, p.partName, p.hsnCode || '-', p.quantity, p.rate.toFixed(2), p.total.toFixed(2)
       ]),
-      foot: [['', '', '', 'Parts Total', `₹${partsTotal.toFixed(2)}`]],
+      foot: [['', '', '', '', 'Parts Total', `₹${partsTotal.toFixed(2)}`]],
       theme: 'striped',
       headStyles: { fillColor: [30, 35, 50], textColor: [255, 165, 0] },
       footStyles: { fillColor: [240, 240, 240], textColor: [30, 35, 50], fontStyle: 'bold' },
@@ -104,26 +114,37 @@ export function generateRepairOrderPDF(order: RepairOrder) {
     y = (doc as any).lastAutoTable.finalY + 5;
   }
 
-  // Totals
+  // GST Totals
+  const cgstRate = order.gstInfo?.cgstRate ?? 9;
+  const sgstRate = order.gstInfo?.sgstRate ?? 9;
+
   autoTable(doc, {
     startY: y,
     body: [
       ['Subtotal', `₹${subtotal.toFixed(2)}`],
       ['Discount', `₹${order.discount.toFixed(2)}`],
-      ['FINAL AMOUNT', `₹${finalAmount.toFixed(2)}`],
+      ['Taxable Amount', `₹${taxableAmount.toFixed(2)}`],
+      [`CGST @ ${cgstRate}%`, `₹${cgstAmount.toFixed(2)}`],
+      [`SGST @ ${sgstRate}%`, `₹${sgstAmount.toFixed(2)}`],
+      ['Total GST', `₹${totalGST.toFixed(2)}`],
+      ['FINAL AMOUNT (Incl. GST)', `₹${finalAmount.toFixed(2)}`],
     ],
     theme: 'plain',
     columnStyles: {
       0: { fontStyle: 'bold', halign: 'right', cellWidth: 140 },
       1: { fontStyle: 'bold', halign: 'right', cellWidth: 46 },
     },
-    styles: { fontSize: 11 },
+    styles: { fontSize: 10 },
     margin: { left: 14, right: 14 },
     didParseCell: (data) => {
-      if (data.row.index === 2) {
+      if (data.row.index === 6) {
         data.cell.styles.fillColor = [255, 165, 0];
         data.cell.styles.textColor = [255, 255, 255];
         data.cell.styles.fontSize = 13;
+      }
+      if (data.row.index >= 3 && data.row.index <= 5) {
+        data.cell.styles.textColor = [100, 100, 100];
+        data.cell.styles.fontSize = 9;
       }
     },
   });

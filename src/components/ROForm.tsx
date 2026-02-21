@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { RepairOrder, VehicleType, SparePart, LaborCharge, BRANDS, STATUS_OPTIONS, ROStatus } from '@/types/repair-order';
+import { RepairOrder, VehicleType, SparePart, LaborCharge, GSTInfo, BRANDS, STATUS_OPTIONS, ROStatus } from '@/types/repair-order';
 import { generateRONumber, addRepairOrder, updateRepairOrder, calculateTotals } from '@/lib/repair-orders';
 import { generateRepairOrderPDF } from '@/lib/pdf-generator';
 import { Button } from '@/components/ui/button';
@@ -37,12 +37,13 @@ export function ROForm({ existing }: Props) {
     spareParts: existing?.spareParts || [],
     laborCharges: existing?.laborCharges || [],
     discount: existing?.discount || 0,
+    gstInfo: existing?.gstInfo || { garageGSTIN: '', customerGSTIN: '', cgstRate: 9, sgstRate: 9 },
   });
 
   const update = (field: string, value: any) => setForm(prev => ({ ...prev, [field]: value }));
 
   const addPart = () => {
-    update('spareParts', [...form.spareParts, { id: crypto.randomUUID(), partName: '', quantity: 1, rate: 0, total: 0 }]);
+    update('spareParts', [...form.spareParts, { id: crypto.randomUUID(), partName: '', hsnCode: '', quantity: 1, rate: 0, total: 0 }]);
   };
 
   const updatePart = (id: string, field: string, value: any) => {
@@ -66,7 +67,11 @@ export function ROForm({ existing }: Props) {
 
   const removeLabor = (id: string) => update('laborCharges', form.laborCharges.filter(l => l.id !== id));
 
-  const { partsTotal, laborTotal, subtotal, finalAmount } = calculateTotals(form.spareParts, form.laborCharges, form.discount);
+  const { partsTotal, laborTotal, subtotal, taxableAmount, cgstAmount, sgstAmount, totalGST, finalAmount } = calculateTotals(form.spareParts, form.laborCharges, form.discount, form.gstInfo);
+
+  const updateGST = (field: keyof GSTInfo, value: any) => {
+    update('gstInfo', { ...form.gstInfo, [field]: value });
+  };
 
   const handleSave = () => {
     if (!form.customerName || !form.mobileNumber || !form.vehicleNumber || !form.brand || !form.model) {
@@ -192,6 +197,35 @@ export function ROForm({ existing }: Props) {
         </Card>
       </div>
 
+      {/* GST Information */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base">GST Information</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div>
+              <Label>Garage GSTIN</Label>
+              <Input value={form.gstInfo.garageGSTIN} onChange={e => updateGST('garageGSTIN', e.target.value.toUpperCase())} disabled={isDelivered} placeholder="22AAAAA0000A1Z5" />
+            </div>
+            <div>
+              <Label>Customer GSTIN (Optional)</Label>
+              <Input value={form.gstInfo.customerGSTIN} onChange={e => updateGST('customerGSTIN', e.target.value.toUpperCase())} disabled={isDelivered} placeholder="Optional" />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label>CGST Rate (%)</Label>
+              <Input type="number" value={form.gstInfo.cgstRate} onChange={e => updateGST('cgstRate', Number(e.target.value))} disabled={isDelivered} min={0} max={28} />
+            </div>
+            <div>
+              <Label>SGST Rate (%)</Label>
+              <Input type="number" value={form.gstInfo.sgstRate} onChange={e => updateGST('sgstRate', Number(e.target.value))} disabled={isDelivered} min={0} max={28} />
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Complaints & Service */}
       <Card>
         <CardHeader className="pb-3">
@@ -239,12 +273,13 @@ export function ROForm({ existing }: Props) {
             <p className="text-sm text-muted-foreground text-center py-4">No spare parts added</p>
           ) : (
             <div className="space-y-2">
-              <div className="grid grid-cols-[1fr_80px_100px_100px_40px] gap-2 text-xs font-semibold text-muted-foreground px-1">
-                <span>Part Name</span><span>Qty</span><span>Rate (₹)</span><span>Total (₹)</span><span />
+              <div className="grid grid-cols-[1fr_100px_80px_100px_100px_40px] gap-2 text-xs font-semibold text-muted-foreground px-1">
+                <span>Part Name</span><span>HSN Code</span><span>Qty</span><span>Rate (₹)</span><span>Total (₹)</span><span />
               </div>
               {form.spareParts.map(p => (
-                <div key={p.id} className="grid grid-cols-[1fr_80px_100px_100px_40px] gap-2 items-center">
+                <div key={p.id} className="grid grid-cols-[1fr_100px_80px_100px_100px_40px] gap-2 items-center">
                   <Input value={p.partName} onChange={e => updatePart(p.id, 'partName', e.target.value)} disabled={isDelivered} placeholder="Part name" />
+                  <Input value={p.hsnCode} onChange={e => updatePart(p.id, 'hsnCode', e.target.value)} disabled={isDelivered} placeholder="HSN" />
                   <Input type="number" value={p.quantity} onChange={e => updatePart(p.id, 'quantity', Number(e.target.value))} disabled={isDelivered} min={1} />
                   <Input type="number" value={p.rate} onChange={e => updatePart(p.id, 'rate', Number(e.target.value))} disabled={isDelivered} />
                   <Input value={`₹${p.total.toFixed(2)}`} disabled className="font-mono" />
@@ -313,8 +348,11 @@ export function ROForm({ existing }: Props) {
                 className="w-28 text-right font-mono"
               />
             </div>
+            <div className="flex gap-8"><span className="text-muted-foreground">Taxable Amount:</span><span className="font-mono">₹{taxableAmount.toFixed(2)}</span></div>
+            <div className="flex gap-8"><span className="text-muted-foreground">CGST ({form.gstInfo.cgstRate}%):</span><span className="font-mono">₹{cgstAmount.toFixed(2)}</span></div>
+            <div className="flex gap-8"><span className="text-muted-foreground">SGST ({form.gstInfo.sgstRate}%):</span><span className="font-mono">₹{sgstAmount.toFixed(2)}</span></div>
             <div className="flex gap-8 text-lg mt-2 pt-2 border-t border-primary/30">
-              <span className="font-bold text-primary">Final Amount:</span>
+              <span className="font-bold text-primary">Final Amount (Incl. GST):</span>
               <span className="font-mono font-bold text-primary">₹{finalAmount.toFixed(2)}</span>
             </div>
           </div>
