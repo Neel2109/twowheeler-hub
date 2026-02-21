@@ -35,7 +35,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                   className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
                     active
                       ? 'bg-primary text-primary-foreground'
-                      : 'text-garage-dark-foreground/70 hover:bg-sidebar-accent hover:text-garage-dark-foreground'
+                      : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground'
                   }`}
                 >
                   <item.icon className="w-4 h-4" />
