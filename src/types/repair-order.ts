@@ -4,6 +4,7 @@ export type ROStatus = 'Open' | 'In Progress' | 'Waiting for Parts' | 'Ready for
 export interface SparePart {
   id: string;
   partName: string;
+  hsnCode: string;
   quantity: number;
   rate: number;
   total: number;
@@ -13,6 +14,13 @@ export interface LaborCharge {
   id: string;
   description: string;
   amount: number;
+}
+
+export interface GSTInfo {
+  garageGSTIN: string;
+  customerGSTIN: string;
+  cgstRate: number;
+  sgstRate: number;
 }
 
 export interface RepairOrder {
@@ -32,6 +40,7 @@ export interface RepairOrder {
   spareParts: SparePart[];
   laborCharges: LaborCharge[];
   discount: number;
+  gstInfo: GSTInfo;
   createdAt: string;
   updatedAt: string;
 }

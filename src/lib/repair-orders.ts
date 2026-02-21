@@ -1,4 +1,4 @@
-import { RepairOrder, SparePart, LaborCharge } from '@/types/repair-order';
+import { RepairOrder, SparePart, LaborCharge, GSTInfo } from '@/types/repair-order';
 
 const STORAGE_KEY = 'patidar_repair_orders';
 
@@ -46,12 +46,18 @@ export function deleteRepairOrder(id: string) {
   saveRepairOrders(orders);
 }
 
-export function calculateTotals(parts: SparePart[], labor: LaborCharge[], discount: number) {
+export function calculateTotals(parts: SparePart[], labor: LaborCharge[], discount: number, gstInfo?: GSTInfo) {
   const partsTotal = parts.reduce((sum, p) => sum + p.total, 0);
   const laborTotal = labor.reduce((sum, l) => sum + l.amount, 0);
   const subtotal = partsTotal + laborTotal;
-  const finalAmount = subtotal - discount;
-  return { partsTotal, laborTotal, subtotal, finalAmount };
+  const taxableAmount = subtotal - discount;
+  const cgstRate = gstInfo?.cgstRate ?? 9;
+  const sgstRate = gstInfo?.sgstRate ?? 9;
+  const cgstAmount = (taxableAmount * cgstRate) / 100;
+  const sgstAmount = (taxableAmount * sgstRate) / 100;
+  const totalGST = cgstAmount + sgstAmount;
+  const finalAmount = taxableAmount + totalGST;
+  return { partsTotal, laborTotal, subtotal, taxableAmount, cgstAmount, sgstAmount, totalGST, finalAmount };
 }
 
 export function getServiceHistory(vehicleNumber: string): RepairOrder[] {
