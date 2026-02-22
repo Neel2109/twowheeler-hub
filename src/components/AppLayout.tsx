@@ -1,19 +1,22 @@
 import { Link, useLocation } from 'react-router-dom';
-import { Wrench, LayoutDashboard, Plus, List, Search } from 'lucide-react';
+import { Wrench, LayoutDashboard, Plus, List, Search, FileText, LogOut } from 'lucide-react';
+import { useAuth } from '@/hooks/useAuth';
+import { Button } from '@/components/ui/button';
 
 const navItems = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard },
   { to: '/create', label: 'New RO', icon: Plus },
   { to: '/orders', label: 'All Orders', icon: List },
   { to: '/search', label: 'Search', icon: Search },
+  { to: '/reports', label: 'Reports', icon: FileText },
 ];
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const location = useLocation();
+  const { signOut } = useAuth();
 
   return (
     <div className="min-h-screen flex flex-col">
-      {/* Top navbar */}
       <header className="garage-gradient text-garage-dark-foreground border-b border-sidebar-border sticky top-0 z-50">
         <div className="container flex items-center justify-between h-16 px-4">
           <Link to="/" className="flex items-center gap-2.5">
@@ -43,14 +46,14 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                 </Link>
               );
             })}
+            <Button variant="ghost" size="icon" onClick={signOut} className="ml-2 text-sidebar-foreground hover:text-destructive">
+              <LogOut className="w-4 h-4" />
+            </Button>
           </nav>
         </div>
       </header>
-      {/* Content */}
       <main className="flex-1">
-        <div className="container px-4 py-6">
-          {children}
-        </div>
+        <div className="container px-4 py-6">{children}</div>
       </main>
     </div>
   );
