@@ -2,20 +2,24 @@ import { useState } from 'react';
 import { getServiceHistory, calculateTotals } from '@/lib/repair-orders';
 import { RepairOrder } from '@/types/repair-order';
 import { StatusBadge } from '@/components/StatusBadge';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
-import { Search as SearchIcon } from 'lucide-react';
+import { Search as SearchIcon, Loader2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 export default function SearchPage() {
   const [vehicleNumber, setVehicleNumber] = useState('');
   const [results, setResults] = useState<RepairOrder[] | null>(null);
+  const [loading, setLoading] = useState(false);
 
-  const handleSearch = () => {
+  const handleSearch = async () => {
     if (vehicleNumber.trim()) {
-      setResults(getServiceHistory(vehicleNumber.trim()));
+      setLoading(true);
+      const data = await getServiceHistory(vehicleNumber.trim());
+      setResults(data);
+      setLoading(false);
     }
   };
 
@@ -24,21 +28,15 @@ export default function SearchPage() {
   return (
     <div className="space-y-6 animate-fade-in">
       <h1 className="text-2xl font-bold">Vehicle Service History</h1>
-
       <Card>
         <CardContent className="pt-5">
           <div className="flex gap-3 items-end">
             <div className="flex-1">
               <Label>Vehicle Number</Label>
-              <Input
-                placeholder="Enter vehicle number (e.g. MH12AB1234)"
-                value={vehicleNumber}
-                onChange={e => setVehicleNumber(e.target.value.toUpperCase())}
-                onKeyDown={e => e.key === 'Enter' && handleSearch()}
-              />
+              <Input placeholder="Enter vehicle number (e.g. MH12AB1234)" value={vehicleNumber} onChange={e => setVehicleNumber(e.target.value.toUpperCase())} onKeyDown={e => e.key === 'Enter' && handleSearch()} />
             </div>
-            <Button onClick={handleSearch}>
-              <SearchIcon className="w-4 h-4 mr-1" /> Search
+            <Button onClick={handleSearch} disabled={loading}>
+              {loading ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <SearchIcon className="w-4 h-4 mr-1" />} Search
             </Button>
           </div>
         </CardContent>

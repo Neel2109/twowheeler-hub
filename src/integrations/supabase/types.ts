@@ -14,7 +14,145 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      labor_charges: {
+        Row: {
+          amount: number
+          description: string
+          id: string
+          repair_order_id: string
+        }
+        Insert: {
+          amount?: number
+          description: string
+          id?: string
+          repair_order_id: string
+        }
+        Update: {
+          amount?: number
+          description?: string
+          id?: string
+          repair_order_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "labor_charges_repair_order_id_fkey"
+            columns: ["repair_order_id"]
+            isOneToOne: false
+            referencedRelation: "repair_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      repair_orders: {
+        Row: {
+          brand: string
+          cgst_rate: number
+          created_at: string
+          customer_complaints: string | null
+          customer_gstin: string | null
+          customer_name: string
+          date_in: string
+          discount: number
+          garage_gstin: string | null
+          id: string
+          mobile_number: string
+          model: string
+          remarks: string | null
+          ro_number: string
+          service_details: string | null
+          sgst_rate: number
+          status: string
+          updated_at: string
+          user_id: string
+          vehicle_number: string
+          vehicle_type: string
+        }
+        Insert: {
+          brand: string
+          cgst_rate?: number
+          created_at?: string
+          customer_complaints?: string | null
+          customer_gstin?: string | null
+          customer_name: string
+          date_in?: string
+          discount?: number
+          garage_gstin?: string | null
+          id?: string
+          mobile_number: string
+          model: string
+          remarks?: string | null
+          ro_number: string
+          service_details?: string | null
+          sgst_rate?: number
+          status?: string
+          updated_at?: string
+          user_id: string
+          vehicle_number: string
+          vehicle_type?: string
+        }
+        Update: {
+          brand?: string
+          cgst_rate?: number
+          created_at?: string
+          customer_complaints?: string | null
+          customer_gstin?: string | null
+          customer_name?: string
+          date_in?: string
+          discount?: number
+          garage_gstin?: string | null
+          id?: string
+          mobile_number?: string
+          model?: string
+          remarks?: string | null
+          ro_number?: string
+          service_details?: string | null
+          sgst_rate?: number
+          status?: string
+          updated_at?: string
+          user_id?: string
+          vehicle_number?: string
+          vehicle_type?: string
+        }
+        Relationships: []
+      }
+      spare_parts: {
+        Row: {
+          hsn_code: string | null
+          id: string
+          part_name: string
+          quantity: number
+          rate: number
+          repair_order_id: string
+          total: number
+        }
+        Insert: {
+          hsn_code?: string | null
+          id?: string
+          part_name: string
+          quantity?: number
+          rate?: number
+          repair_order_id: string
+          total?: number
+        }
+        Update: {
+          hsn_code?: string | null
+          id?: string
+          part_name?: string
+          quantity?: number
+          rate?: number
+          repair_order_id?: string
+          total?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "spare_parts_repair_order_id_fkey"
+            columns: ["repair_order_id"]
+            isOneToOne: false
+            referencedRelation: "repair_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never

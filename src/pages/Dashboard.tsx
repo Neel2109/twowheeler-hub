@@ -4,14 +4,15 @@ import { getRepairOrders, calculateTotals } from '@/lib/repair-orders';
 import { RepairOrder, ROStatus } from '@/types/repair-order';
 import { StatusBadge } from '@/components/StatusBadge';
 import { Card, CardContent } from '@/components/ui/card';
-import { Wrench, Clock, CheckCircle, AlertTriangle, TrendingUp, Plus } from 'lucide-react';
+import { Wrench, Clock, CheckCircle, AlertTriangle, TrendingUp, Plus, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 export default function Dashboard() {
   const [orders, setOrders] = useState<RepairOrder[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    setOrders(getRepairOrders());
+    getRepairOrders().then(setOrders).finally(() => setLoading(false));
   }, []);
 
   const statusCounts = orders.reduce((acc, o) => {
@@ -32,6 +33,8 @@ export default function Dashboard() {
     { label: 'Waiting Parts', value: statusCounts['Waiting for Parts'] || 0, icon: AlertTriangle, color: 'text-destructive' },
   ];
 
+  if (loading) return <div className="flex justify-center py-20"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>;
+
   return (
     <div className="space-y-6 animate-fade-in">
       <div className="flex items-center justify-between">
@@ -39,12 +42,9 @@ export default function Dashboard() {
           <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
           <p className="text-muted-foreground text-sm mt-1">Patidar Auto Care — Overview</p>
         </div>
-        <Link to="/create">
-          <Button><Plus className="w-4 h-4 mr-1" /> New Repair Order</Button>
-        </Link>
+        <Link to="/create"><Button><Plus className="w-4 h-4 mr-1" /> New Repair Order</Button></Link>
       </div>
 
-      {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         {stats.map(s => (
           <Card key={s.label}>
@@ -64,7 +64,6 @@ export default function Dashboard() {
         </Card>
       </div>
 
-      {/* Recent */}
       <div>
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-lg font-semibold">Recent Repair Orders</h2>

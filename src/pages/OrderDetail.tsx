@@ -6,7 +6,7 @@ import { RepairOrder } from '@/types/repair-order';
 import { StatusBadge } from '@/components/StatusBadge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { FileDown, Pencil, Trash2, ArrowLeft, History } from 'lucide-react';
+import { FileDown, Pencil, Trash2, ArrowLeft, History, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function OrderDetail() {
@@ -14,16 +14,22 @@ export default function OrderDetail() {
   const navigate = useNavigate();
   const [order, setOrder] = useState<RepairOrder | null>(null);
   const [history, setHistory] = useState<RepairOrder[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (id) {
-      const o = getRepairOrderById(id);
-      if (o) {
-        setOrder(o);
-        setHistory(getServiceHistory(o.vehicleNumber).filter(h => h.id !== o.id));
-      }
+      getRepairOrderById(id).then(async (o) => {
+        if (o) {
+          setOrder(o);
+          const hist = await getServiceHistory(o.vehicleNumber);
+          setHistory(hist.filter(h => h.id !== o.id));
+        }
+        setLoading(false);
+      });
     }
   }, [id]);
+
+  if (loading) return <div className="flex justify-center py-20"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>;
 
   if (!order) return (
     <div className="text-center py-20 text-muted-foreground">
@@ -34,9 +40,9 @@ export default function OrderDetail() {
 
   const { partsTotal, laborTotal, subtotal, taxableAmount, cgstAmount, sgstAmount, totalGST, finalAmount } = calculateTotals(order.spareParts, order.laborCharges, order.discount, order.gstInfo);
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (confirm('Delete this repair order?')) {
-      deleteRepairOrder(order.id);
+      await deleteRepairOrder(order.id);
       toast.success('Deleted');
       navigate('/orders');
     }
@@ -46,9 +52,7 @@ export default function OrderDetail() {
     <div className="space-y-6 animate-fade-in">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon" onClick={() => navigate(-1)}>
-            <ArrowLeft className="w-4 h-4" />
-          </Button>
+          <Button variant="ghost" size="icon" onClick={() => navigate(-1)}><ArrowLeft className="w-4 h-4" /></Button>
           <div>
             <h1 className="text-2xl font-bold font-mono">{order.roNumber}</h1>
             <p className="text-sm text-muted-foreground">{new Date(order.dateIn).toLocaleDateString('en-IN', { dateStyle: 'long' })}</p>
@@ -60,13 +64,9 @@ export default function OrderDetail() {
             <FileDown className="w-4 h-4 mr-1" /> PDF
           </Button>
           {order.status !== 'Delivered' && (
-            <Link to={`/orders/${order.id}/edit`}>
-              <Button variant="outline"><Pencil className="w-4 h-4 mr-1" /> Edit</Button>
-            </Link>
+            <Link to={`/orders/${order.id}/edit`}><Button variant="outline"><Pencil className="w-4 h-4 mr-1" /> Edit</Button></Link>
           )}
-          <Button variant="destructive" size="icon" onClick={handleDelete}>
-            <Trash2 className="w-4 h-4" />
-          </Button>
+          <Button variant="destructive" size="icon" onClick={handleDelete}><Trash2 className="w-4 h-4" /></Button>
         </div>
       </div>
 
@@ -101,7 +101,6 @@ export default function OrderDetail() {
         </Card>
       )}
 
-      {/* Parts */}
       {order.spareParts.length > 0 && (
         <Card>
           <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Spare Parts</CardTitle></CardHeader>
@@ -121,7 +120,6 @@ export default function OrderDetail() {
         </Card>
       )}
 
-      {/* Labor */}
       {order.laborCharges.length > 0 && (
         <Card>
           <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Labor Charges</CardTitle></CardHeader>
@@ -141,7 +139,6 @@ export default function OrderDetail() {
         </Card>
       )}
 
-      {/* GST & Billing */}
       <Card className="border-primary/30">
         <CardContent className="pt-5">
           <div className="flex flex-col items-end gap-1 text-sm">
@@ -166,7 +163,6 @@ export default function OrderDetail() {
         </CardContent>
       </Card>
 
-      {/* Service History */}
       {history.length > 0 && (
         <Card>
           <CardHeader className="pb-2">

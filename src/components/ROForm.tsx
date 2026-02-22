@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { RepairOrder, VehicleType, SparePart, LaborCharge, GSTInfo, BRANDS, STATUS_OPTIONS, ROStatus } from '@/types/repair-order';
 import { generateRONumber, addRepairOrder, updateRepairOrder, calculateTotals } from '@/lib/repair-orders';
 import { generateRepairOrderPDF } from '@/lib/pdf-generator';
+import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -10,7 +11,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { StatusBadge } from '@/components/StatusBadge';
-import { Plus, Trash2, FileDown, Save } from 'lucide-react';
+import { Plus, Trash2, FileDown, Save, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface Props {
@@ -19,8 +20,10 @@ interface Props {
 
 export function ROForm({ existing }: Props) {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const isEdit = !!existing;
   const isDelivered = existing?.status === 'Delivered';
+  const [saving, setSaving] = useState(false);
 
   const [form, setForm] = useState<Omit<RepairOrder, 'id' | 'roNumber' | 'createdAt' | 'updatedAt'>>({
     dateIn: existing?.dateIn || new Date().toISOString().split('T')[0],
@@ -73,29 +76,41 @@ export function ROForm({ existing }: Props) {
     update('gstInfo', { ...form.gstInfo, [field]: value });
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!form.customerName || !form.mobileNumber || !form.vehicleNumber || !form.brand || !form.model) {
       toast.error('Please fill all required fields');
       return;
     }
+    if (!user) {
+      toast.error('You must be logged in');
+      return;
+    }
 
-    const now = new Date().toISOString();
-    if (isEdit && existing) {
-      const updated = { ...existing, ...form, updatedAt: now };
-      updateRepairOrder(updated);
-      toast.success('Repair Order updated');
-      navigate(`/orders/${existing.id}`);
-    } else {
-      const order: RepairOrder = {
-        id: crypto.randomUUID(),
-        roNumber: generateRONumber(),
-        ...form,
-        createdAt: now,
-        updatedAt: now,
-      };
-      addRepairOrder(order);
-      toast.success(`Repair Order ${order.roNumber} created`);
-      navigate(`/orders/${order.id}`);
+    setSaving(true);
+    try {
+      const now = new Date().toISOString();
+      if (isEdit && existing) {
+        const updated = { ...existing, ...form, updatedAt: now };
+        await updateRepairOrder(updated);
+        toast.success('Repair Order updated');
+        navigate(`/orders/${existing.id}`);
+      } else {
+        const roNumber = await generateRONumber();
+        const order: RepairOrder = {
+          id: crypto.randomUUID(),
+          roNumber,
+          ...form,
+          createdAt: now,
+          updatedAt: now,
+        };
+        await addRepairOrder(order, user.id);
+        toast.success(`Repair Order ${order.roNumber} created`);
+        navigate(`/orders/${order.id}`);
+      }
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to save');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -108,7 +123,6 @@ export function ROForm({ existing }: Props) {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold">{isEdit ? `Edit ${existing.roNumber}` : 'New Repair Order'}</h2>
@@ -120,8 +134,9 @@ export function ROForm({ existing }: Props) {
               <FileDown className="w-4 h-4 mr-1" /> PDF
             </Button>
           )}
-          <Button onClick={handleSave} disabled={isDelivered}>
-            <Save className="w-4 h-4 mr-1" /> {isEdit ? 'Update' : 'Create'}
+          <Button onClick={handleSave} disabled={isDelivered || saving}>
+            {saving ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Save className="w-4 h-4 mr-1" />}
+            {isEdit ? 'Update' : 'Create'}
           </Button>
         </div>
       </div>
@@ -133,48 +148,27 @@ export function ROForm({ existing }: Props) {
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Customer */}
         <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base">Customer Details</CardTitle>
-          </CardHeader>
+          <CardHeader className="pb-3"><CardTitle className="text-base">Customer Details</CardTitle></CardHeader>
           <CardContent className="space-y-3">
             <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label>Customer Name *</Label>
-                <Input value={form.customerName} onChange={e => update('customerName', e.target.value)} disabled={isDelivered} />
-              </div>
-              <div>
-                <Label>Mobile Number *</Label>
-                <Input value={form.mobileNumber} onChange={e => update('mobileNumber', e.target.value)} disabled={isDelivered} />
-              </div>
+              <div><Label>Customer Name *</Label><Input value={form.customerName} onChange={e => update('customerName', e.target.value)} disabled={isDelivered} /></div>
+              <div><Label>Mobile Number *</Label><Input value={form.mobileNumber} onChange={e => update('mobileNumber', e.target.value)} disabled={isDelivered} /></div>
             </div>
-            <div>
-              <Label>Date In</Label>
-              <Input type="date" value={form.dateIn} onChange={e => update('dateIn', e.target.value)} disabled={isDelivered} />
-            </div>
+            <div><Label>Date In</Label><Input type="date" value={form.dateIn} onChange={e => update('dateIn', e.target.value)} disabled={isDelivered} /></div>
           </CardContent>
         </Card>
 
-        {/* Vehicle */}
         <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base">Vehicle Details</CardTitle>
-          </CardHeader>
+          <CardHeader className="pb-3"><CardTitle className="text-base">Vehicle Details</CardTitle></CardHeader>
           <CardContent className="space-y-3">
             <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label>Vehicle No. *</Label>
-                <Input value={form.vehicleNumber} onChange={e => update('vehicleNumber', e.target.value.toUpperCase())} disabled={isDelivered} placeholder="MH12AB1234" />
-              </div>
+              <div><Label>Vehicle No. *</Label><Input value={form.vehicleNumber} onChange={e => update('vehicleNumber', e.target.value.toUpperCase())} disabled={isDelivered} placeholder="MH12AB1234" /></div>
               <div>
                 <Label>Type</Label>
                 <Select value={form.vehicleType} onValueChange={v => update('vehicleType', v)} disabled={isDelivered}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Bike">Bike</SelectItem>
-                    <SelectItem value="Scooter">Scooter</SelectItem>
-                  </SelectContent>
+                  <SelectContent><SelectItem value="Bike">Bike</SelectItem><SelectItem value="Scooter">Scooter</SelectItem></SelectContent>
                 </Select>
               </div>
             </div>
@@ -183,90 +177,51 @@ export function ROForm({ existing }: Props) {
                 <Label>Brand *</Label>
                 <Select value={form.brand} onValueChange={v => update('brand', v)} disabled={isDelivered}>
                   <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
-                  <SelectContent>
-                    {BRANDS.map(b => <SelectItem key={b} value={b}>{b}</SelectItem>)}
-                  </SelectContent>
+                  <SelectContent>{BRANDS.map(b => <SelectItem key={b} value={b}>{b}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
-              <div>
-                <Label>Model *</Label>
-                <Input value={form.model} onChange={e => update('model', e.target.value)} disabled={isDelivered} />
-              </div>
+              <div><Label>Model *</Label><Input value={form.model} onChange={e => update('model', e.target.value)} disabled={isDelivered} /></div>
             </div>
           </CardContent>
         </Card>
       </div>
 
-      {/* GST Information */}
       <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">GST Information</CardTitle>
-        </CardHeader>
+        <CardHeader className="pb-3"><CardTitle className="text-base">GST Information</CardTitle></CardHeader>
         <CardContent className="space-y-3">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div>
-              <Label>Garage GSTIN</Label>
-              <Input value={form.gstInfo.garageGSTIN} onChange={e => updateGST('garageGSTIN', e.target.value.toUpperCase())} disabled={isDelivered} placeholder="22AAAAA0000A1Z5" />
-            </div>
-            <div>
-              <Label>Customer GSTIN (Optional)</Label>
-              <Input value={form.gstInfo.customerGSTIN} onChange={e => updateGST('customerGSTIN', e.target.value.toUpperCase())} disabled={isDelivered} placeholder="Optional" />
-            </div>
+            <div><Label>Garage GSTIN</Label><Input value={form.gstInfo.garageGSTIN} onChange={e => updateGST('garageGSTIN', e.target.value.toUpperCase())} disabled={isDelivered} placeholder="22AAAAA0000A1Z5" /></div>
+            <div><Label>Customer GSTIN (Optional)</Label><Input value={form.gstInfo.customerGSTIN} onChange={e => updateGST('customerGSTIN', e.target.value.toUpperCase())} disabled={isDelivered} placeholder="Optional" /></div>
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label>CGST Rate (%)</Label>
-              <Input type="number" value={form.gstInfo.cgstRate} onChange={e => updateGST('cgstRate', Number(e.target.value))} disabled={isDelivered} min={0} max={28} />
-            </div>
-            <div>
-              <Label>SGST Rate (%)</Label>
-              <Input type="number" value={form.gstInfo.sgstRate} onChange={e => updateGST('sgstRate', Number(e.target.value))} disabled={isDelivered} min={0} max={28} />
-            </div>
+            <div><Label>CGST Rate (%)</Label><Input type="number" value={form.gstInfo.cgstRate} onChange={e => updateGST('cgstRate', Number(e.target.value))} disabled={isDelivered} min={0} max={28} /></div>
+            <div><Label>SGST Rate (%)</Label><Input type="number" value={form.gstInfo.sgstRate} onChange={e => updateGST('sgstRate', Number(e.target.value))} disabled={isDelivered} min={0} max={28} /></div>
           </div>
         </CardContent>
       </Card>
 
-      {/* Complaints & Service */}
       <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">Service Information</CardTitle>
-        </CardHeader>
+        <CardHeader className="pb-3"><CardTitle className="text-base">Service Information</CardTitle></CardHeader>
         <CardContent className="space-y-3">
           {isEdit && (
             <div>
               <Label>Status</Label>
               <Select value={form.status} onValueChange={v => update('status', v)} disabled={isDelivered}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {STATUS_OPTIONS.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-                </SelectContent>
+                <SelectContent>{STATUS_OPTIONS.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
               </Select>
             </div>
           )}
-          <div>
-            <Label>Customer Complaints</Label>
-            <Textarea value={form.customerComplaints} onChange={e => update('customerComplaints', e.target.value)} rows={3} disabled={isDelivered} />
-          </div>
-          <div>
-            <Label>Service Details</Label>
-            <Textarea value={form.serviceDetails} onChange={e => update('serviceDetails', e.target.value)} rows={3} disabled={isDelivered} />
-          </div>
-          <div>
-            <Label>Remarks</Label>
-            <Textarea value={form.remarks} onChange={e => update('remarks', e.target.value)} rows={2} disabled={isDelivered} />
-          </div>
+          <div><Label>Customer Complaints</Label><Textarea value={form.customerComplaints} onChange={e => update('customerComplaints', e.target.value)} rows={3} disabled={isDelivered} /></div>
+          <div><Label>Service Details</Label><Textarea value={form.serviceDetails} onChange={e => update('serviceDetails', e.target.value)} rows={3} disabled={isDelivered} /></div>
+          <div><Label>Remarks</Label><Textarea value={form.remarks} onChange={e => update('remarks', e.target.value)} rows={2} disabled={isDelivered} /></div>
         </CardContent>
       </Card>
 
-      {/* Spare Parts */}
       <Card>
         <CardHeader className="pb-3 flex flex-row items-center justify-between">
           <CardTitle className="text-base">Spare Parts</CardTitle>
-          {!isDelivered && (
-            <Button size="sm" variant="outline" onClick={addPart}>
-              <Plus className="w-3.5 h-3.5 mr-1" /> Add Part
-            </Button>
-          )}
+          {!isDelivered && <Button size="sm" variant="outline" onClick={addPart}><Plus className="w-3.5 h-3.5 mr-1" /> Add Part</Button>}
         </CardHeader>
         <CardContent>
           {form.spareParts.length === 0 ? (
@@ -284,9 +239,7 @@ export function ROForm({ existing }: Props) {
                   <Input type="number" value={p.rate} onChange={e => updatePart(p.id, 'rate', Number(e.target.value))} disabled={isDelivered} />
                   <Input value={`₹${p.total.toFixed(2)}`} disabled className="font-mono" />
                   {!isDelivered && (
-                    <Button size="icon" variant="ghost" onClick={() => removePart(p.id)} className="text-destructive">
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </Button>
+                    <Button size="icon" variant="ghost" onClick={() => removePart(p.id)} className="text-destructive"><Trash2 className="w-3.5 h-3.5" /></Button>
                   )}
                 </div>
               ))}
@@ -296,15 +249,10 @@ export function ROForm({ existing }: Props) {
         </CardContent>
       </Card>
 
-      {/* Labor */}
       <Card>
         <CardHeader className="pb-3 flex flex-row items-center justify-between">
           <CardTitle className="text-base">Labor & Service Charges</CardTitle>
-          {!isDelivered && (
-            <Button size="sm" variant="outline" onClick={addLabor}>
-              <Plus className="w-3.5 h-3.5 mr-1" /> Add Service
-            </Button>
-          )}
+          {!isDelivered && <Button size="sm" variant="outline" onClick={addLabor}><Plus className="w-3.5 h-3.5 mr-1" /> Add Service</Button>}
         </CardHeader>
         <CardContent>
           {form.laborCharges.length === 0 ? (
@@ -319,9 +267,7 @@ export function ROForm({ existing }: Props) {
                   <Input value={l.description} onChange={e => updateLabor(l.id, 'description', e.target.value)} disabled={isDelivered} placeholder="Service description" />
                   <Input type="number" value={l.amount} onChange={e => updateLabor(l.id, 'amount', Number(e.target.value))} disabled={isDelivered} />
                   {!isDelivered && (
-                    <Button size="icon" variant="ghost" onClick={() => removeLabor(l.id)} className="text-destructive">
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </Button>
+                    <Button size="icon" variant="ghost" onClick={() => removeLabor(l.id)} className="text-destructive"><Trash2 className="w-3.5 h-3.5" /></Button>
                   )}
                 </div>
               ))}
@@ -331,7 +277,6 @@ export function ROForm({ existing }: Props) {
         </CardContent>
       </Card>
 
-      {/* Billing Summary */}
       <Card className="border-primary/30">
         <CardContent className="pt-6">
           <div className="flex flex-col items-end gap-1.5 text-sm">
@@ -340,13 +285,7 @@ export function ROForm({ existing }: Props) {
             <div className="flex gap-8"><span className="text-muted-foreground">Subtotal:</span><span className="font-mono font-semibold">₹{subtotal.toFixed(2)}</span></div>
             <div className="flex gap-8 items-center">
               <span className="text-muted-foreground">Discount:</span>
-              <Input
-                type="number"
-                value={form.discount}
-                onChange={e => update('discount', Number(e.target.value))}
-                disabled={isDelivered}
-                className="w-28 text-right font-mono"
-              />
+              <Input type="number" value={form.discount} onChange={e => update('discount', Number(e.target.value))} disabled={isDelivered} className="w-28 text-right font-mono" />
             </div>
             <div className="flex gap-8"><span className="text-muted-foreground">Taxable Amount:</span><span className="font-mono">₹{taxableAmount.toFixed(2)}</span></div>
             <div className="flex gap-8"><span className="text-muted-foreground">CGST ({form.gstInfo.cgstRate}%):</span><span className="font-mono">₹{cgstAmount.toFixed(2)}</span></div>
