@@ -1,29 +1,54 @@
-import { useEffect, useState } from 'react';
-import { supabase } from '@/integrations/supabase/client';
-import type { User } from '@supabase/supabase-js';
+import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 export function useAuth() {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<{ id: string; email: string } | null>(null);
   const [loading, setLoading] = useState(true);
+  const navigate = useNavigate();
 
   useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-      setLoading(false);
-    });
+    const fetchUser = async () => {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        setLoading(false);
+        return;
+      }
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null);
-      setLoading(false);
-    });
+      try {
+        const response = await fetch('http://localhost:3001/api/auth/me', {
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        });
 
-    return () => subscription.unsubscribe();
+        if (response.ok) {
+          const data = await response.json();
+          setUser(data.user);
+        } else {
+          localStorage.removeItem('token');
+        }
+      } catch (err) {
+        console.error('Failed to fetch user', err);
+        localStorage.removeItem('token');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchUser();
   }, []);
 
-  const signOut = async () => {
-    await supabase.auth.signOut();
-    setUser(null);
+  const login = (token: string, userData: { id: string; email: string }) => {
+    localStorage.setItem('token', token);
+    setUser(userData);
+    navigate('/');
   };
 
-  return { user, loading, signOut };
+  const signOut = () => {
+    localStorage.removeItem('token');
+    setUser(null);
+    navigate('/login');
+  };
+
+  return { user, loading, login, signOut };
 }

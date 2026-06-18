@@ -1,7 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { getOrdersByDateRange, calculateTotals } from '@/lib/repair-orders';
+import { getMechanics } from '@/lib/mechanics';
 import { generateRepairOrderPDF } from '@/lib/pdf-generator';
 import { RepairOrder } from '@/types/repair-order';
+import { Mechanic } from '@/types/mechanic';
 import { StatusBadge } from '@/components/StatusBadge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -18,7 +20,12 @@ export default function Reports() {
   const [dateFrom, setDateFrom] = useState(today);
   const [dateTo, setDateTo] = useState(today);
   const [orders, setOrders] = useState<RepairOrder[] | null>(null);
+  const [mechanics, setMechanics] = useState<Mechanic[]>([]);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    getMechanics().then(setMechanics).catch(console.error);
+  }, []);
 
   const handleFetch = async () => {
     setLoading(true);
@@ -27,7 +34,23 @@ export default function Reports() {
     setLoading(false);
   };
 
-  const totalRevenue = orders?.reduce((sum, o) => sum + calculateTotals(o.spareParts, o.laborCharges, o.discount, o.gstInfo).finalAmount, 0) || 0;
+  const getMechanicName = (id?: string) => mechanics.find(m => m.id === id)?.name || 'Unassigned';
+
+  const totalRevenue = orders?.filter(o => !o.isEstimate).reduce((sum, o) => sum + calculateTotals(o.spareParts, o.laborCharges, o.discount, o.gstInfo).finalAmount, 0) || 0;
+  const totalEstimates = orders?.filter(o => o.isEstimate).reduce((sum, o) => sum + calculateTotals(o.spareParts, o.laborCharges, o.discount, o.gstInfo).finalAmount, 0) || 0;
+  const estimatesCount = orders?.filter(o => o.isEstimate).length || 0;
+  const actualOrdersCount = orders?.filter(o => !o.isEstimate).length || 0;
+
+  // Mechanic Stats
+  const mechanicStats = orders?.filter(o => !o.isEstimate).reduce((acc, order) => {
+    const mechId = order.mechanicId || 'unassigned';
+    if (!acc[mechId]) acc[mechId] = { count: 0, revenue: 0, labor: 0 };
+    const totals = calculateTotals(order.spareParts, order.laborCharges, order.discount, order.gstInfo);
+    acc[mechId].count += 1;
+    acc[mechId].revenue += totals.finalAmount;
+    acc[mechId].labor += totals.laborTotal;
+    return acc;
+  }, {} as Record<string, { count: number, revenue: number, labor: number }>);
 
   const downloadDailyPDF = () => {
     if (!orders || orders.length === 0) {
@@ -61,7 +84,7 @@ export default function Reports() {
         o.customerName,
         o.vehicleNumber,
         `${o.brand} ${o.model}`,
-        o.status,
+        o.isEstimate ? 'Estimate' : o.status,
         `₹${t.finalAmount.toFixed(0)}`,
       ];
     });
@@ -70,7 +93,7 @@ export default function Reports() {
       startY: 38,
       head: [['#', 'RO Number', 'Date', 'Customer', 'Vehicle No.', 'Vehicle', 'Status', 'Amount']],
       body: rows,
-      foot: [['', '', '', '', '', '', 'Total', `₹${totalRevenue.toFixed(0)}`]],
+      foot: [['', '', '', '', '', '', 'Total Confirmed', `₹${totalRevenue.toFixed(0)}`]],
       theme: 'striped',
       headStyles: { fillColor: [30, 35, 50], textColor: [255, 165, 0], fontSize: 8 },
       footStyles: { fillColor: [240, 240, 240], textColor: [30, 35, 50], fontStyle: 'bold' },
@@ -88,7 +111,8 @@ export default function Reports() {
     toast.success('PDF downloaded');
   };
 
-  const downloadIndividualPDF = (order: RepairOrder) => {
+  const downloadIndividualPDF = (e: React.MouseEvent, order: RepairOrder) => {
+    e.preventDefault();
     generateRepairOrderPDF(order);
     toast.success(`${order.roNumber} PDF downloaded`);
   };
@@ -117,10 +141,37 @@ export default function Reports() {
 
       {orders !== null && (
         <>
-          <div className="flex gap-4 text-sm">
-            <span className="text-muted-foreground">Orders: <strong>{orders.length}</strong></span>
-            <span className="text-muted-foreground">Total Revenue: <strong className="text-primary">₹{totalRevenue.toFixed(0)}</strong></span>
+          <div className="flex flex-col md:flex-row gap-4 mb-4">
+            <Card className="flex-1 bg-primary/5 border-primary/20">
+              <CardContent className="p-4">
+                <p className="text-sm text-muted-foreground mb-1">Confirmed Orders ({actualOrdersCount})</p>
+                <p className="text-2xl font-bold text-foreground">₹{totalRevenue.toFixed(0)}</p>
+              </CardContent>
+            </Card>
+            <Card className="flex-1 bg-orange-50 dark:bg-orange-950/20 border-orange-200 dark:border-orange-900/50">
+              <CardContent className="p-4">
+                <p className="text-sm text-muted-foreground mb-1">Estimates ({estimatesCount})</p>
+                <p className="text-2xl font-bold text-orange-600 dark:text-orange-500 font-mono">₹{totalEstimates.toFixed(0)}</p>
+              </CardContent>
+            </Card>
           </div>
+
+          {mechanicStats && Object.keys(mechanicStats).length > 0 && (
+            <Card className="mb-4">
+              <CardHeader className="py-3 px-4"><CardTitle className="text-sm">Mechanic Performance (Confirmed)</CardTitle></CardHeader>
+              <CardContent className="px-4 pb-4">
+                <div className="space-y-2">
+                  {Object.entries(mechanicStats).map(([id, stats]) => (
+                    <div key={id} className="flex justify-between items-center py-2 border-b border-border/50 last:border-b-0">
+                      <span className="text-sm font-medium flex-1">{getMechanicName(id)}</span>
+                      <span className="text-xs text-muted-foreground w-20 text-center">{stats.count} jobs</span>
+                      <span className="text-sm font-mono font-semibold w-24 text-right">₹{stats.revenue.toFixed(0)}</span>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
           {orders.length === 0 ? (
             <Card><CardContent className="py-10 text-center text-muted-foreground">No orders found for selected dates</CardContent></Card>
@@ -133,14 +184,17 @@ export default function Reports() {
                     <CardContent className="py-3 px-4 flex items-center justify-between flex-wrap gap-2">
                       <Link to={`/orders/${order.id}`} className="flex items-center gap-4 min-w-0 flex-1">
                         <div className="min-w-0">
-                          <span className="font-mono text-sm font-semibold">{order.roNumber}</span>
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="font-mono text-sm font-semibold">{order.roNumber}</span>
+                            {order.isEstimate && <span className="bg-orange-100 text-orange-800 text-[10px] px-1.5 py-0.5 rounded font-bold">ESTIMATE</span>}
+                          </div>
                           <p className="text-xs text-muted-foreground truncate">{order.customerName} • {order.vehicleNumber} • {order.brand} {order.model}</p>
                         </div>
                       </Link>
                       <div className="flex items-center gap-3">
                         <span className="font-mono text-sm">₹{totals.finalAmount.toFixed(0)}</span>
                         <StatusBadge status={order.status} />
-                        <Button size="sm" variant="ghost" onClick={() => downloadIndividualPDF(order)}>
+                        <Button size="sm" variant="ghost" onClick={(e) => downloadIndividualPDF(e, order)}>
                           <FileDown className="w-3.5 h-3.5" />
                         </Button>
                       </div>

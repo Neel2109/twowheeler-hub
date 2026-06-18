@@ -37,6 +37,10 @@ function dbToRepairOrder(row: any, parts: any[], labor: any[]): RepairOrder {
       cgstRate: Number(row.cgst_rate),
       sgstRate: Number(row.sgst_rate),
     },
+    mechanicId: row.mechanic_id,
+    isEstimate: row.is_estimate || false,
+    customerSignatureUrl: row.customer_signature_url,
+    media: [], // We'll populate this separately if needed
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -99,6 +103,9 @@ export async function addRepairOrder(order: RepairOrder, userId: string): Promis
     customer_gstin: order.gstInfo.customerGSTIN,
     cgst_rate: order.gstInfo.cgstRate,
     sgst_rate: order.gstInfo.sgstRate,
+    mechanic_id: order.mechanicId,
+    is_estimate: order.isEstimate,
+    customer_signature_url: order.customerSignatureUrl,
   }).select().single();
 
   if (error) throw error;
@@ -147,6 +154,9 @@ export async function updateRepairOrder(updated: RepairOrder): Promise<RepairOrd
     customer_gstin: updated.gstInfo.customerGSTIN,
     cgst_rate: updated.gstInfo.cgstRate,
     sgst_rate: updated.gstInfo.sgstRate,
+    mechanic_id: updated.mechanicId,
+    is_estimate: updated.isEstimate,
+    customer_signature_url: updated.customerSignatureUrl,
   }).eq('id', updated.id);
 
   if (error) throw error;

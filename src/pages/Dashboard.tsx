@@ -3,8 +3,8 @@ import { Link } from 'react-router-dom';
 import { getRepairOrders, calculateTotals } from '@/lib/repair-orders';
 import { RepairOrder, ROStatus } from '@/types/repair-order';
 import { StatusBadge } from '@/components/StatusBadge';
-import { Card, CardContent } from '@/components/ui/card';
-import { Wrench, Clock, CheckCircle, AlertTriangle, TrendingUp, Plus, Loader2 } from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Wrench, Clock, CheckCircle, AlertTriangle, TrendingUp, Plus, Loader2, Package, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 export default function Dashboard() {
@@ -61,6 +61,27 @@ export default function Dashboard() {
             <p className="text-2xl font-bold text-primary">₹{todayRevenue.toFixed(0)}</p>
             <p className="text-xs text-muted-foreground">Today's Revenue</p>
           </CardContent>
+        </Card>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <Card className="bg-card hover:bg-accent/10 transition-colors">
+          <Link to="/inventory" className="flex items-center gap-4 p-6">
+            <div className="bg-primary/10 p-4 rounded-full"><Package className="w-8 h-8 text-primary" /></div>
+            <div>
+              <h3 className="text-xl font-semibold">Inventory Management</h3>
+              <p className="text-muted-foreground text-sm">Manage spare parts and stock levels</p>
+            </div>
+          </Link>
+        </Card>
+        <Card className="bg-card hover:bg-accent/10 transition-colors">
+          <Link to="/mechanics" className="flex items-center gap-4 p-6">
+            <div className="bg-primary/10 p-4 rounded-full"><Users className="w-8 h-8 text-primary" /></div>
+            <div>
+              <h3 className="text-xl font-semibold">Staff Management</h3>
+              <p className="text-muted-foreground text-sm">Manage mechanics and roles</p>
+            </div>
+          </Link>
         </Card>
       </div>
 

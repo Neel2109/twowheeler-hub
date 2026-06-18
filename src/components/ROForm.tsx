@@ -1,17 +1,23 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { RepairOrder, VehicleType, SparePart, LaborCharge, GSTInfo, BRANDS, STATUS_OPTIONS, ROStatus } from '@/types/repair-order';
+import SignatureCanvas from 'react-signature-canvas';
+import { decode } from 'base64-arraybuffer';
+import { supabase } from '@/integrations/supabase/client';
+import { RepairOrder, VehicleType, SparePart, LaborCharge, GSTInfo, BRANDS, STATUS_OPTIONS, ROStatus, ROMedia } from '@/types/repair-order';
+import { Mechanic } from '@/types/mechanic';
 import { generateRONumber, addRepairOrder, updateRepairOrder, calculateTotals } from '@/lib/repair-orders';
+import { getMechanics } from '@/lib/mechanics';
 import { generateRepairOrderPDF } from '@/lib/pdf-generator';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { StatusBadge } from '@/components/StatusBadge';
-import { Plus, Trash2, FileDown, Save, Loader2 } from 'lucide-react';
+import { Plus, Trash2, FileDown, Save, Loader2, Camera, PenTool } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface Props {
@@ -24,6 +30,11 @@ export function ROForm({ existing }: Props) {
   const isEdit = !!existing;
   const isDelivered = existing?.status === 'Delivered';
   const [saving, setSaving] = useState(false);
+  
+  const [mechanics, setMechanics] = useState<Mechanic[]>([]);
+  const [showSignaturePad, setShowSignaturePad] = useState(false);
+  const signatureRef = useRef<SignatureCanvas>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [form, setForm] = useState<Omit<RepairOrder, 'id' | 'roNumber' | 'createdAt' | 'updatedAt'>>({
     dateIn: existing?.dateIn || new Date().toISOString().split('T')[0],
@@ -41,14 +52,19 @@ export function ROForm({ existing }: Props) {
     laborCharges: existing?.laborCharges || [],
     discount: existing?.discount || 0,
     gstInfo: existing?.gstInfo || { garageGSTIN: '', customerGSTIN: '', cgstRate: 9, sgstRate: 9 },
+    mechanicId: existing?.mechanicId || undefined,
+    isEstimate: existing?.isEstimate || false,
+    customerSignatureUrl: existing?.customerSignatureUrl || undefined,
+    media: existing?.media || [],
   });
+
+  useEffect(() => {
+    getMechanics().then(setMechanics).catch(console.error);
+  }, []);
 
   const update = (field: string, value: any) => setForm(prev => ({ ...prev, [field]: value }));
 
-  const addPart = () => {
-    update('spareParts', [...form.spareParts, { id: crypto.randomUUID(), partName: '', hsnCode: '', quantity: 1, rate: 0, total: 0 }]);
-  };
-
+  const addPart = () => update('spareParts', [...form.spareParts, { id: crypto.randomUUID(), partName: '', hsnCode: '', quantity: 1, rate: 0, total: 0 }]);
   const updatePart = (id: string, field: string, value: any) => {
     update('spareParts', form.spareParts.map(p => {
       if (p.id !== id) return p;
@@ -57,23 +73,66 @@ export function ROForm({ existing }: Props) {
       return updated;
     }));
   };
-
   const removePart = (id: string) => update('spareParts', form.spareParts.filter(p => p.id !== id));
 
-  const addLabor = () => {
-    update('laborCharges', [...form.laborCharges, { id: crypto.randomUUID(), description: '', amount: 0 }]);
-  };
-
-  const updateLabor = (id: string, field: string, value: any) => {
-    update('laborCharges', form.laborCharges.map(l => l.id === id ? { ...l, [field]: value } : l));
-  };
-
+  const addLabor = () => update('laborCharges', [...form.laborCharges, { id: crypto.randomUUID(), description: '', amount: 0 }]);
+  const updateLabor = (id: string, field: string, value: any) => update('laborCharges', form.laborCharges.map(l => l.id === id ? { ...l, [field]: value } : l));
   const removeLabor = (id: string) => update('laborCharges', form.laborCharges.filter(l => l.id !== id));
 
   const { partsTotal, laborTotal, subtotal, taxableAmount, cgstAmount, sgstAmount, totalGST, finalAmount } = calculateTotals(form.spareParts, form.laborCharges, form.discount, form.gstInfo);
 
-  const updateGST = (field: keyof GSTInfo, value: any) => {
-    update('gstInfo', { ...form.gstInfo, [field]: value });
+  const updateGST = (field: keyof GSTInfo, value: any) => update('gstInfo', { ...form.gstInfo, [field]: value });
+
+  const uploadBase64 = async (base64Str: string, path: string) => {
+    const base64Data = base64Str.replace(/^data:image\/\w+;base64,/, '');
+    const { error } = await supabase.storage.from('ro_media').upload(path, decode(base64Data), { contentType: 'image/png', upsert: true });
+    if (error) throw error;
+    return supabase.storage.from('ro_media').getPublicUrl(path).data.publicUrl;
+  };
+
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onloadend = async () => {
+      const base64Str = reader.result as string;
+      setSaving(true);
+      try {
+        const path = `photos/${crypto.randomUUID()}.png`;
+        const url = await uploadBase64(base64Str, path);
+        const newMedia: ROMedia = { id: crypto.randomUUID(), repairOrderId: existing?.id || '', mediaUrl: url, mediaType: 'image', description: 'Vehicle Photo' };
+        update('media', [...(form.media || []), newMedia]);
+        toast.success('Photo uploaded successfully');
+      } catch (err: any) {
+        toast.error(err.message || 'Upload failed');
+      } finally {
+        setSaving(false);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleSaveSignature = async () => {
+    if (signatureRef.current?.isEmpty()) {
+      toast.error('Please sign before saving');
+      return;
+    }
+    const base64Str = signatureRef.current?.getTrimmedCanvas().toDataURL('image/png');
+    if (!base64Str) return;
+
+    setSaving(true);
+    try {
+      const path = `signatures/${crypto.randomUUID()}.png`;
+      const url = await uploadBase64(base64Str, path);
+      update('customerSignatureUrl', url);
+      setShowSignaturePad(false);
+      toast.success('Signature saved');
+    } catch (err: any) {
+      toast.error(err.message || 'Signature upload failed');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleSave = async () => {
@@ -81,10 +140,7 @@ export function ROForm({ existing }: Props) {
       toast.error('Please fill all required fields');
       return;
     }
-    if (!user) {
-      toast.error('You must be logged in');
-      return;
-    }
+    if (!user) return toast.error('You must be logged in');
 
     setSaving(true);
     try {
@@ -92,20 +148,30 @@ export function ROForm({ existing }: Props) {
       if (isEdit && existing) {
         const updated = { ...existing, ...form, updatedAt: now };
         await updateRepairOrder(updated);
+        
+        if (form.media && form.media.length > 0) {
+           const newMedias = form.media.filter(m => m.repairOrderId === '');
+           if(newMedias.length > 0) {
+             const toInsert = newMedias.map(m => ({ repair_order_id: existing.id, media_url: m.mediaUrl, media_type: m.mediaType, description: m.description }));
+             await supabase.from('ro_media').insert(toInsert);
+           }
+        }
+        
         toast.success('Repair Order updated');
         navigate(`/orders/${existing.id}`);
       } else {
         const roNumber = await generateRONumber();
-        const order: RepairOrder = {
-          id: crypto.randomUUID(),
-          roNumber,
-          ...form,
-          createdAt: now,
-          updatedAt: now,
-        };
+        const roId = crypto.randomUUID();
+        const order: RepairOrder = { id: roId, roNumber, ...form, createdAt: now, updatedAt: now };
         await addRepairOrder(order, user.id);
+        
+        if (form.media && form.media.length > 0) {
+           const toInsert = form.media.map(m => ({ repair_order_id: roId, media_url: m.mediaUrl, media_type: m.mediaType, description: m.description }));
+           await supabase.from('ro_media').insert(toInsert);
+        }
+        
         toast.success(`Repair Order ${order.roNumber} created`);
-        navigate(`/orders/${order.id}`);
+        navigate(`/orders/${roId}`);
       }
     } catch (error: any) {
       toast.error(error.message || 'Failed to save');
@@ -147,6 +213,17 @@ export function ROForm({ existing }: Props) {
         </div>
       )}
 
+      {/* Estimates Toggle */}
+      <Card>
+        <CardContent className="flex flex-row items-center justify-between py-4">
+          <div className="space-y-0.5">
+            <Label className="text-base font-semibold">Estimate / Quotation</Label>
+            <p className="text-sm text-muted-foreground">Mark as estimate before confirming repair</p>
+          </div>
+          <Switch checked={form.isEstimate} onCheckedChange={v => update('isEstimate', v)} disabled={isDelivered} />
+        </CardContent>
+      </Card>
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card>
           <CardHeader className="pb-3"><CardTitle className="text-base">Customer Details</CardTitle></CardHeader>
@@ -187,31 +264,29 @@ export function ROForm({ existing }: Props) {
       </div>
 
       <Card>
-        <CardHeader className="pb-3"><CardTitle className="text-base">GST Information</CardTitle></CardHeader>
-        <CardContent className="space-y-3">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div><Label>Garage GSTIN</Label><Input value={form.gstInfo.garageGSTIN} onChange={e => updateGST('garageGSTIN', e.target.value.toUpperCase())} disabled={isDelivered} placeholder="22AAAAA0000A1Z5" /></div>
-            <div><Label>Customer GSTIN (Optional)</Label><Input value={form.gstInfo.customerGSTIN} onChange={e => updateGST('customerGSTIN', e.target.value.toUpperCase())} disabled={isDelivered} placeholder="Optional" /></div>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div><Label>CGST Rate (%)</Label><Input type="number" value={form.gstInfo.cgstRate} onChange={e => updateGST('cgstRate', Number(e.target.value))} disabled={isDelivered} min={0} max={28} /></div>
-            <div><Label>SGST Rate (%)</Label><Input type="number" value={form.gstInfo.sgstRate} onChange={e => updateGST('sgstRate', Number(e.target.value))} disabled={isDelivered} min={0} max={28} /></div>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
         <CardHeader className="pb-3"><CardTitle className="text-base">Service Information</CardTitle></CardHeader>
         <CardContent className="space-y-3">
-          {isEdit && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-2">
+            {isEdit && (
+              <div>
+                <Label>Status</Label>
+                <Select value={form.status} onValueChange={v => update('status', v)} disabled={isDelivered}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>{STATUS_OPTIONS.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+            )}
             <div>
-              <Label>Status</Label>
-              <Select value={form.status} onValueChange={v => update('status', v)} disabled={isDelivered}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>{STATUS_OPTIONS.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
+              <Label>Assigned Mechanic</Label>
+              <Select value={form.mechanicId || "none"} onValueChange={v => update('mechanicId', v === 'none' ? undefined : v)} disabled={isDelivered}>
+                <SelectTrigger><SelectValue placeholder="Unassigned" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Unassigned</SelectItem>
+                  {mechanics.map(m => <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>)}
+                </SelectContent>
               </Select>
             </div>
-          )}
+          </div>
           <div><Label>Customer Complaints</Label><Textarea value={form.customerComplaints} onChange={e => update('customerComplaints', e.target.value)} rows={3} disabled={isDelivered} /></div>
           <div><Label>Service Details</Label><Textarea value={form.serviceDetails} onChange={e => update('serviceDetails', e.target.value)} rows={3} disabled={isDelivered} /></div>
           <div><Label>Remarks</Label><Textarea value={form.remarks} onChange={e => update('remarks', e.target.value)} rows={2} disabled={isDelivered} /></div>
@@ -272,6 +347,63 @@ export function ROForm({ existing }: Props) {
                 </div>
               ))}
               <div className="text-right font-semibold text-sm pt-2 pr-12">Labor Total: ₹{laborTotal.toFixed(2)}</div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Media Attachments */}
+      <Card>
+        <CardHeader className="pb-3 flex flex-row items-center justify-between">
+          <CardTitle className="text-base">Vehicle Photos</CardTitle>
+          {!isDelivered && (
+            <div>
+              <input type="file" accept="image/*" className="hidden" ref={fileInputRef} onChange={handleFileUpload} />
+              <Button size="sm" variant="outline" onClick={() => fileInputRef.current?.click()} disabled={saving}>
+                <Camera className="w-3.5 h-3.5 mr-1" /> Add Photo
+              </Button>
+            </div>
+          )}
+        </CardHeader>
+        <CardContent>
+          <div className="flex gap-4 overflow-x-auto pb-2">
+            {form.media?.filter(m => m.mediaType === 'image').map((m, i) => (
+              <img key={m.id || i} src={m.mediaUrl} className="w-32 h-32 object-cover rounded-lg border border-border" alt="Vehicle" />
+            ))}
+            {form.media?.filter(m => m.mediaType === 'image').length === 0 && (
+              <p className="text-sm text-muted-foreground">No photos attached.</p>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Customer Signature */}
+      <Card>
+        <CardHeader className="pb-3 flex flex-row items-center justify-between">
+          <CardTitle className="text-base">Customer Signature</CardTitle>
+          {!form.customerSignatureUrl && !isDelivered && !showSignaturePad && (
+            <Button size="sm" onClick={() => setShowSignaturePad(true)}>
+              <PenTool className="w-3.5 h-3.5 mr-1" /> Sign Now
+            </Button>
+          )}
+        </CardHeader>
+        <CardContent>
+          {form.customerSignatureUrl ? (
+            <img src={form.customerSignatureUrl} className="h-32 object-contain bg-white border border-border rounded-lg p-2" alt="Signature" />
+          ) : !showSignaturePad ? (
+            <p className="text-sm text-muted-foreground">No signature captured.</p>
+          ) : null}
+
+          {showSignaturePad && (
+            <div className="border border-border rounded-lg p-2 bg-white">
+              <SignatureCanvas 
+                ref={signatureRef} 
+                canvasProps={{ className: 'w-full h-48 border-b border-gray-200 cursor-crosshair' }} 
+              />
+              <div className="flex justify-between mt-2">
+                <Button variant="outline" size="sm" onClick={() => signatureRef.current?.clear()}>Clear</Button>
+                <Button size="sm" onClick={handleSaveSignature} disabled={saving}>Save Signature</Button>
+              </div>
             </div>
           )}
         </CardContent>

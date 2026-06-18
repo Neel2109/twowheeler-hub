@@ -23,6 +23,14 @@ export interface GSTInfo {
   sgstRate: number;
 }
 
+export interface ROMedia {
+  id: string;
+  repairOrderId: string;
+  mediaUrl: string;
+  mediaType: string;
+  description: string;
+}
+
 export interface RepairOrder {
   id: string;
   roNumber: string;
@@ -41,6 +49,10 @@ export interface RepairOrder {
   laborCharges: LaborCharge[];
   discount: number;
   gstInfo: GSTInfo;
+  mechanicId?: string;
+  isEstimate: boolean;
+  customerSignatureUrl?: string;
+  media?: ROMedia[];
   createdAt: string;
   updatedAt: string;
 }

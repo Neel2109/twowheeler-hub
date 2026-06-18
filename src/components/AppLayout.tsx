@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom';
-import { Wrench, LayoutDashboard, Plus, List, Search, FileText, LogOut } from 'lucide-react';
+import { Wrench, LayoutDashboard, Plus, List, Search, FileText, LogOut, Package, Users } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 
@@ -9,6 +9,8 @@ const navItems = [
   { to: '/orders', label: 'All Orders', icon: List },
   { to: '/search', label: 'Search', icon: Search },
   { to: '/reports', label: 'Reports', icon: FileText },
+  { to: '/inventory', label: 'Inventory', icon: Package },
+  { to: '/mechanics', label: 'Staff', icon: Users },
 ];
 
 export function AppLayout({ children }: { children: React.ReactNode }) {

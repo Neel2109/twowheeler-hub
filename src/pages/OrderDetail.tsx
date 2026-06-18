@@ -1,12 +1,14 @@
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import { getRepairOrderById, calculateTotals, deleteRepairOrder, getServiceHistory } from '@/lib/repair-orders';
+import { getMechanics } from '@/lib/mechanics';
 import { generateRepairOrderPDF } from '@/lib/pdf-generator';
 import { RepairOrder } from '@/types/repair-order';
+import { Mechanic } from '@/types/mechanic';
 import { StatusBadge } from '@/components/StatusBadge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { FileDown, Pencil, Trash2, ArrowLeft, History, Loader2 } from 'lucide-react';
+import { FileDown, Pencil, Trash2, ArrowLeft, History, Loader2, MessageCircle } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function OrderDetail() {
@@ -14,9 +16,11 @@ export default function OrderDetail() {
   const navigate = useNavigate();
   const [order, setOrder] = useState<RepairOrder | null>(null);
   const [history, setHistory] = useState<RepairOrder[]>([]);
+  const [mechanics, setMechanics] = useState<Mechanic[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    getMechanics().then(setMechanics).catch(console.error);
     if (id) {
       getRepairOrderById(id).then(async (o) => {
         if (o) {
@@ -38,6 +42,7 @@ export default function OrderDetail() {
     </div>
   );
 
+  const mechanicName = order.mechanicId ? mechanics.find(m => m.id === order.mechanicId)?.name || 'Unknown' : 'Unassigned';
   const { partsTotal, laborTotal, subtotal, taxableAmount, cgstAmount, sgstAmount, totalGST, finalAmount } = calculateTotals(order.spareParts, order.laborCharges, order.discount, order.gstInfo);
 
   const handleDelete = async () => {
@@ -48,18 +53,32 @@ export default function OrderDetail() {
     }
   };
 
+  const handleWhatsAppShare = () => {
+    const text = `Hello ${order.customerName},\n\nYour repair order (${order.roNumber}) at Patidar Auto Care is currently: ${order.status}.\n\nVehicle: ${order.vehicleNumber}\nTotal Amount: ₹${finalAmount.toFixed(0)}\n\nThank you for choosing us!`;
+    const encoded = encodeURIComponent(text);
+    let number = order.mobileNumber.replace(/\D/g, '');
+    if (number.length === 10) number = '91' + number;
+    window.open(`https://wa.me/${number}?text=${encoded}`, '_blank');
+  };
+
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="space-y-6 animate-fade-in max-w-5xl mx-auto pb-10">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-3">
           <Button variant="ghost" size="icon" onClick={() => navigate(-1)}><ArrowLeft className="w-4 h-4" /></Button>
           <div>
-            <h1 className="text-2xl font-bold font-mono">{order.roNumber}</h1>
+            <div className="flex items-center gap-2">
+              <h1 className="text-2xl font-bold font-mono">{order.roNumber}</h1>
+              {order.isEstimate && <span className="bg-orange-100 text-orange-800 text-[10px] px-1.5 py-0.5 rounded font-bold">ESTIMATE</span>}
+            </div>
             <p className="text-sm text-muted-foreground">{new Date(order.dateIn).toLocaleDateString('en-IN', { dateStyle: 'long' })}</p>
           </div>
           <StatusBadge status={order.status} />
         </div>
         <div className="flex gap-2">
+          <Button variant="outline" className="text-green-600 hover:text-green-700 hover:bg-green-50" onClick={handleWhatsAppShare}>
+            <MessageCircle className="w-4 h-4 mr-1" /> WhatsApp
+          </Button>
           <Button variant="outline" onClick={() => { generateRepairOrderPDF(order); toast.success('PDF downloaded'); }}>
             <FileDown className="w-4 h-4 mr-1" /> PDF
           </Button>
@@ -70,7 +89,7 @@ export default function OrderDetail() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card>
           <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Customer</CardTitle></CardHeader>
           <CardContent>
@@ -83,6 +102,13 @@ export default function OrderDetail() {
           <CardContent>
             <p className="font-semibold text-lg">{order.vehicleNumber}</p>
             <p className="text-sm text-muted-foreground">{order.vehicleType} • {order.brand} {order.model}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Assigned Mechanic</CardTitle></CardHeader>
+          <CardContent>
+            <p className="font-semibold text-lg">{mechanicName}</p>
+            {order.mechanicId && <p className="text-sm text-muted-foreground">Staff Member</p>}
           </CardContent>
         </Card>
       </div>
@@ -98,6 +124,19 @@ export default function OrderDetail() {
         <Card>
           <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Service Details</CardTitle></CardHeader>
           <CardContent><p className="text-sm whitespace-pre-wrap">{order.serviceDetails}</p></CardContent>
+        </Card>
+      )}
+
+      {order.media && order.media.filter(m => m.mediaType === 'image').length > 0 && (
+        <Card>
+          <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Vehicle Photos</CardTitle></CardHeader>
+          <CardContent>
+            <div className="flex gap-4 overflow-x-auto pb-2">
+              {order.media.filter(m => m.mediaType === 'image').map((m, i) => (
+                <img key={m.id || i} src={m.mediaUrl} className="w-48 h-48 object-cover rounded-lg border border-border" alt="Vehicle" />
+              ))}
+            </div>
+          </CardContent>
         </Card>
       )}
 
@@ -139,29 +178,42 @@ export default function OrderDetail() {
         </Card>
       )}
 
-      <Card className="border-primary/30">
-        <CardContent className="pt-5">
-          <div className="flex flex-col items-end gap-1 text-sm">
-            {order.gstInfo?.garageGSTIN && (
-              <div className="flex gap-6 w-full mb-2 pb-2 border-b border-border/50 text-xs text-muted-foreground">
-                <span>GSTIN: {order.gstInfo.garageGSTIN}</span>
-                {order.gstInfo.customerGSTIN && <span>Customer GSTIN: {order.gstInfo.customerGSTIN}</span>}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {order.customerSignatureUrl ? (
+          <Card>
+            <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Customer Signature</CardTitle></CardHeader>
+            <CardContent>
+              <div className="bg-white border border-border p-4 rounded-lg inline-block">
+                <img src={order.customerSignatureUrl} alt="Customer Signature" className="h-32 object-contain" />
               </div>
-            )}
-            <div className="flex gap-6"><span className="text-muted-foreground">Parts:</span><span className="font-mono">₹{partsTotal.toFixed(2)}</span></div>
-            <div className="flex gap-6"><span className="text-muted-foreground">Labor:</span><span className="font-mono">₹{laborTotal.toFixed(2)}</span></div>
-            <div className="flex gap-6"><span className="text-muted-foreground">Subtotal:</span><span className="font-mono">₹{subtotal.toFixed(2)}</span></div>
-            <div className="flex gap-6"><span className="text-muted-foreground">Discount:</span><span className="font-mono">-₹{order.discount.toFixed(2)}</span></div>
-            <div className="flex gap-6"><span className="text-muted-foreground">Taxable Amount:</span><span className="font-mono">₹{taxableAmount.toFixed(2)}</span></div>
-            <div className="flex gap-6"><span className="text-muted-foreground">CGST ({order.gstInfo?.cgstRate ?? 9}%):</span><span className="font-mono">₹{cgstAmount.toFixed(2)}</span></div>
-            <div className="flex gap-6"><span className="text-muted-foreground">SGST ({order.gstInfo?.sgstRate ?? 9}%):</span><span className="font-mono">₹{sgstAmount.toFixed(2)}</span></div>
-            <div className="flex gap-6 text-lg pt-2 border-t border-primary/30 mt-1">
-              <span className="font-bold text-primary">Final (Incl. GST):</span>
-              <span className="font-mono font-bold text-primary">₹{finalAmount.toFixed(2)}</span>
+            </CardContent>
+          </Card>
+        ) : <div />}
+
+        <Card className="border-primary/30">
+          <CardContent className="pt-5">
+            <div className="flex flex-col items-end gap-1 text-sm">
+              {order.gstInfo?.garageGSTIN && (
+                <div className="flex gap-6 w-full mb-2 pb-2 border-b border-border/50 text-xs text-muted-foreground">
+                  <span>GSTIN: {order.gstInfo.garageGSTIN}</span>
+                  {order.gstInfo.customerGSTIN && <span>Customer GSTIN: {order.gstInfo.customerGSTIN}</span>}
+                </div>
+              )}
+              <div className="flex gap-6"><span className="text-muted-foreground">Parts:</span><span className="font-mono">₹{partsTotal.toFixed(2)}</span></div>
+              <div className="flex gap-6"><span className="text-muted-foreground">Labor:</span><span className="font-mono">₹{laborTotal.toFixed(2)}</span></div>
+              <div className="flex gap-6"><span className="text-muted-foreground">Subtotal:</span><span className="font-mono font-semibold">₹{subtotal.toFixed(2)}</span></div>
+              <div className="flex gap-6"><span className="text-muted-foreground">Discount:</span><span className="font-mono">-₹{order.discount.toFixed(2)}</span></div>
+              <div className="flex gap-6"><span className="text-muted-foreground">Taxable Amount:</span><span className="font-mono">₹{taxableAmount.toFixed(2)}</span></div>
+              <div className="flex gap-6"><span className="text-muted-foreground">CGST ({order.gstInfo?.cgstRate ?? 9}%):</span><span className="font-mono">₹{cgstAmount.toFixed(2)}</span></div>
+              <div className="flex gap-6"><span className="text-muted-foreground">SGST ({order.gstInfo?.sgstRate ?? 9}%):</span><span className="font-mono">₹{sgstAmount.toFixed(2)}</span></div>
+              <div className="flex gap-6 text-lg pt-2 border-t border-primary/30 mt-1">
+                <span className="font-bold text-primary">Final (Incl. GST):</span>
+                <span className="font-mono font-bold text-primary">₹{finalAmount.toFixed(2)}</span>
+              </div>
             </div>
-          </div>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      </div>
 
       {history.length > 0 && (
         <Card>
