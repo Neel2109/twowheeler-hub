@@ -1,39 +1,39 @@
-import Database from 'better-sqlite3';
-import path from 'path';
-import { fileURLToPath } from 'url';
+import postgres from 'postgres';
+import dotenv from 'dotenv';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+dotenv.config();
 
-// Open the SQLite database
-const dbPath = path.join(__dirname, 'data.db');
-const db = new Database(dbPath, { verbose: console.log });
+// Connect to Vercel Postgres using the connection string from env
+const connectionString = process.env.POSTGRES_URL || 'postgres://postgres:postgres@localhost:5432/twowheeler';
+const sql = postgres(connectionString);
 
-// Enable foreign keys
-db.pragma('foreign_keys = ON');
+async function initDb() {
+  try {
+    await sql`
+      CREATE TABLE IF NOT EXISTS users (
+        id UUID PRIMARY KEY,
+        email TEXT UNIQUE NOT NULL,
+        password_hash TEXT NOT NULL,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+    `;
 
-// Create tables
-function initDb() {
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS users (
-      id TEXT PRIMARY KEY,
-      email TEXT UNIQUE NOT NULL,
-      password_hash TEXT NOT NULL,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    );
-
-    CREATE TABLE IF NOT EXISTS projects (
-      id TEXT PRIMARY KEY,
-      user_id TEXT NOT NULL,
-      name TEXT NOT NULL,
-      description TEXT,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
-    );
-  `);
-  console.log('Database tables initialized.');
+    await sql`
+      CREATE TABLE IF NOT EXISTS projects (
+        id UUID PRIMARY KEY,
+        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        name TEXT NOT NULL,
+        description TEXT,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+    `;
+    console.log('Postgres tables initialized successfully.');
+  } catch (err) {
+    console.error('Error initializing Postgres tables:', err);
+  }
 }
 
+// Automatically try to initialize DB on startup
 initDb();
 
-export default db;
+export default sql;

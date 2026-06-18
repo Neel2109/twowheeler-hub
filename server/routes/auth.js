@@ -2,7 +2,7 @@ import express from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { v4 as uuidv4 } from 'uuid';
-import db from '../database.js';
+import sql from '../database.js';
 
 const router = express.Router();
 const JWT_SECRET = process.env.JWT_SECRET || 'your_super_secret_jwt_key_here'; // In production, use a secure env var
@@ -17,8 +17,8 @@ router.post('/signup', async (req, res) => {
     }
 
     // Check if user exists
-    const existingUser = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
-    if (existingUser) {
+    const existingUsers = await sql`SELECT * FROM users WHERE email = ${email}`;
+    if (existingUsers.length > 0) {
       return res.status(400).json({ error: 'User already exists' });
     }
 
@@ -28,7 +28,10 @@ router.post('/signup', async (req, res) => {
 
     // Create user
     const id = uuidv4();
-    db.prepare('INSERT INTO users (id, email, password_hash) VALUES (?, ?, ?)').run(id, email, passwordHash);
+    await sql`
+      INSERT INTO users (id, email, password_hash) 
+      VALUES (${id}, ${email}, ${passwordHash})
+    `;
 
     // Create JWT
     const token = jwt.sign({ userId: id, email }, JWT_SECRET, { expiresIn: '7d' });
@@ -54,10 +57,11 @@ router.post('/login', async (req, res) => {
     }
 
     // Find user
-    const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
-    if (!user) {
+    const users = await sql`SELECT * FROM users WHERE email = ${email}`;
+    if (users.length === 0) {
       return res.status(400).json({ error: 'Invalid credentials' });
     }
+    const user = users[0];
 
     // Check password
     const isMatch = await bcrypt.compare(password, user.password_hash);
@@ -80,7 +84,7 @@ router.post('/login', async (req, res) => {
 });
 
 // Get Current User Profile (Protected)
-router.get('/me', (req, res) => {
+router.get('/me', async (req, res) => {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return res.status(401).json({ error: 'Unauthorized' });
@@ -89,13 +93,13 @@ router.get('/me', (req, res) => {
   const token = authHeader.split(' ')[1];
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
-    const user = db.prepare('SELECT id, email, created_at FROM users WHERE id = ?').get(decoded.userId);
+    const users = await sql`SELECT id, email, created_at FROM users WHERE id = ${decoded.userId}`;
     
-    if (!user) {
+    if (users.length === 0) {
       return res.status(404).json({ error: 'User not found' });
     }
 
-    res.json({ user });
+    res.json({ user: users[0] });
   } catch (err) {
     res.status(401).json({ error: 'Invalid or expired token' });
   }
