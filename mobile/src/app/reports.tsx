@@ -2,8 +2,10 @@ import { useState } from 'react';
 import { View, Text, ScrollView, TextInput, Pressable, ActivityIndicator, Alert } from 'react-native';
 import { Link } from 'expo-router';
 import { getOrdersByDateRange, calculateTotals } from '@/lib/repair-orders';
+import { getMechanics } from '@/lib/mechanics';
 import { generateRepairOrderPDF } from '@/lib/pdf-generator';
 import { RepairOrder } from '@/types/repair-order';
+import { Mechanic } from '@/types/mechanic';
 import { StatusBadge } from '@/components/StatusBadge';
 import { FileDown, CalendarDays } from 'lucide-react-native';
 import * as Print from 'expo-print';
@@ -14,7 +16,12 @@ export default function Reports() {
   const [dateFrom, setDateFrom] = useState(today);
   const [dateTo, setDateTo] = useState(today);
   const [orders, setOrders] = useState<RepairOrder[] | null>(null);
+  const [mechanics, setMechanics] = useState<Mechanic[]>([]);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    getMechanics().then(setMechanics).catch(console.error);
+  }, []);
 
   const handleFetch = async () => {
     setLoading(true);
@@ -23,7 +30,23 @@ export default function Reports() {
     setLoading(false);
   };
 
-  const totalRevenue = orders?.reduce((sum, o) => sum + calculateTotals(o.spareParts, o.laborCharges, o.discount, o.gstInfo).finalAmount, 0) || 0;
+  const getMechanicName = (id?: string) => mechanics.find(m => m.id === id)?.name || 'Unassigned';
+
+  const totalRevenue = orders?.filter(o => !o.isEstimate).reduce((sum, o) => sum + calculateTotals(o.spareParts, o.laborCharges, o.discount, o.gstInfo).finalAmount, 0) || 0;
+  const totalEstimates = orders?.filter(o => o.isEstimate).reduce((sum, o) => sum + calculateTotals(o.spareParts, o.laborCharges, o.discount, o.gstInfo).finalAmount, 0) || 0;
+  const estimatesCount = orders?.filter(o => o.isEstimate).length || 0;
+  const actualOrdersCount = orders?.filter(o => !o.isEstimate).length || 0;
+
+  // Mechanic Stats
+  const mechanicStats = orders?.filter(o => !o.isEstimate).reduce((acc, order) => {
+    const mechId = order.mechanicId || 'unassigned';
+    if (!acc[mechId]) acc[mechId] = { count: 0, revenue: 0, labor: 0 };
+    const totals = calculateTotals(order.spareParts, order.laborCharges, order.discount, order.gstInfo);
+    acc[mechId].count += 1;
+    acc[mechId].revenue += totals.finalAmount;
+    acc[mechId].labor += totals.laborTotal;
+    return acc;
+  }, {} as Record<string, { count: number, revenue: number, labor: number }>);
 
   const downloadDailyPDF = async () => {
     if (!orders || orders.length === 0) {
@@ -182,14 +205,27 @@ export default function Reports() {
           <>
             <View className="flex-row justify-between mb-4 bg-primary/5 p-4 rounded-xl border border-primary/20">
               <View>
-                <Text className="text-sm text-muted-foreground mb-1">Orders</Text>
-                <Text className="text-xl font-bold text-foreground">{orders.length}</Text>
+                <Text className="text-sm text-muted-foreground mb-1">Confirmed Orders ({actualOrdersCount})</Text>
+                <Text className="text-xl font-bold text-foreground">₹{totalRevenue.toFixed(0)}</Text>
               </View>
               <View className="items-end">
-                <Text className="text-sm text-muted-foreground mb-1">Total Revenue</Text>
-                <Text className="text-xl font-bold text-primary font-mono">₹{totalRevenue.toFixed(0)}</Text>
+                <Text className="text-sm text-muted-foreground mb-1">Estimates ({estimatesCount})</Text>
+                <Text className="text-xl font-bold text-primary font-mono">₹{totalEstimates.toFixed(0)}</Text>
               </View>
             </View>
+
+            {mechanicStats && Object.keys(mechanicStats).length > 0 && (
+              <View className="mb-4 bg-card p-4 rounded-xl border border-border">
+                <Text className="text-sm font-semibold text-foreground mb-2">Mechanic Performance (Confirmed)</Text>
+                {Object.entries(mechanicStats).map(([id, stats]) => (
+                  <View key={id} className="flex-row justify-between items-center py-1 border-b border-border/50 last:border-b-0">
+                    <Text className="text-sm text-foreground flex-1">{getMechanicName(id)}</Text>
+                    <Text className="text-xs text-muted-foreground w-16 text-center">{stats.count} jobs</Text>
+                    <Text className="text-sm font-mono text-foreground w-20 text-right">₹{stats.revenue.toFixed(0)}</Text>
+                  </View>
+                ))}
+              </View>
+            )}
 
             {orders.length === 0 ? (
               <View className="py-10 items-center bg-card rounded-xl border border-border">
@@ -203,7 +239,10 @@ export default function Reports() {
                     <Link key={order.id} href={`/orders/${order.id}`} asChild>
                       <Pressable className="bg-card p-4 rounded-xl border border-border flex-row items-center justify-between">
                         <View className="flex-1 pr-2">
-                          <Text className="font-mono text-sm font-semibold text-foreground mb-1">{order.roNumber}</Text>
+                          <View className="flex-row items-center gap-x-2 mb-1">
+                            <Text className="font-mono text-sm font-semibold text-foreground">{order.roNumber}</Text>
+                            {order.isEstimate && <View className="bg-orange-100 px-1.5 py-0.5 rounded"><Text className="text-[10px] text-orange-800 font-medium">ESTIMATE</Text></View>}
+                          </View>
                           <Text className="text-xs text-muted-foreground truncate" numberOfLines={1}>
                             {order.customerName} • {order.vehicleNumber} • {order.brand} {order.model}
                           </Text>
