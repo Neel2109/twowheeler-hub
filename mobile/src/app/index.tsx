@@ -4,7 +4,7 @@ import { Link } from 'expo-router';
 import { getRepairOrders, calculateTotals } from '@/lib/repair-orders';
 import { RepairOrder } from '@/types/repair-order';
 import { StatusBadge } from '@/components/StatusBadge';
-import { Wrench, Clock, CheckCircle, AlertTriangle, TrendingUp, Plus } from 'lucide-react-native';
+import { Wrench, Clock, CheckCircle, AlertTriangle, TrendingUp, Plus, Package, Users } from 'lucide-react-native';
 
 export default function Dashboard() {
   const [orders, setOrders] = useState<RepairOrder[]>([]);
@@ -65,6 +65,28 @@ export default function Dashboard() {
           <TrendingUp size={24} color="hsl(221.2 83.2% 53.3%)" className="mb-2" />
           <Text className="text-2xl font-bold text-primary">₹{todayRevenue.toFixed(0)}</Text>
           <Text className="text-xs text-primary">Today's Revenue</Text>
+        </View>
+      </View>
+
+      <View className="mb-6">
+        <Text className="text-lg font-semibold text-foreground mb-3">Management</Text>
+        <View className="flex-row gap-x-3">
+          <Link href="/inventory" asChild>
+            <Pressable className="flex-1 bg-card p-4 rounded-xl border border-border items-center flex-row">
+              <View className="bg-primary/10 p-2 rounded-lg mr-3">
+                <Package size={20} color="hsl(221.2 83.2% 53.3%)" />
+              </View>
+              <Text className="text-foreground font-medium">Inventory</Text>
+            </Pressable>
+          </Link>
+          <Link href="/mechanics" asChild>
+            <Pressable className="flex-1 bg-card p-4 rounded-xl border border-border items-center flex-row">
+              <View className="bg-primary/10 p-2 rounded-lg mr-3">
+                <Users size={20} color="hsl(221.2 83.2% 53.3%)" />
+              </View>
+              <Text className="text-foreground font-medium">Staff</Text>
+            </Pressable>
+          </Link>
         </View>
       </View>
 

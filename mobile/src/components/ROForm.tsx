@@ -1,11 +1,17 @@
-import { useState } from 'react';
-import { View, Text, ScrollView, TextInput, Pressable, Alert, ActivityIndicator } from 'react-native';
+import { useState, useEffect, useRef } from 'react';
+import { View, Text, ScrollView, TextInput, Pressable, Alert, ActivityIndicator, Image, Switch } from 'react-native';
 import { useRouter } from 'expo-router';
-import { RepairOrder, BRANDS, STATUS_OPTIONS, ROStatus, GSTInfo } from '@/types/repair-order';
+import * as ImagePicker from 'expo-image-picker';
+import SignatureScreen from 'react-native-signature-canvas';
+import { decode } from 'base64-arraybuffer';
+import { RepairOrder, BRANDS, STATUS_OPTIONS, ROStatus, GSTInfo, ROMedia } from '@/types/repair-order';
+import { Mechanic } from '@/types/mechanic';
 import { generateRONumber, addRepairOrder, updateRepairOrder, calculateTotals } from '@/lib/repair-orders';
+import { getMechanics } from '@/lib/mechanics';
 import { useAuth } from '@/hooks/useAuth';
+import { supabase } from '@/integrations/supabase/client';
 import { StatusBadge } from '@/components/StatusBadge';
-import { Plus, Trash2, Save } from 'lucide-react-native';
+import { Plus, Trash2, Save, Camera, PenTool } from 'lucide-react-native';
 import * as crypto from 'expo-crypto';
 
 interface Props {
@@ -18,6 +24,10 @@ export function ROForm({ existing }: Props) {
   const isEdit = !!existing;
   const isDelivered = existing?.status === 'Delivered';
   const [saving, setSaving] = useState(false);
+  const [mechanics, setMechanics] = useState<Mechanic[]>([]);
+  
+  const [showSignaturePad, setShowSignaturePad] = useState(false);
+  const signatureRef = useRef<any>(null);
 
   const [form, setForm] = useState<Omit<RepairOrder, 'id' | 'roNumber' | 'createdAt' | 'updatedAt'>>({
     dateIn: existing?.dateIn || new Date().toISOString().split('T')[0],
@@ -35,14 +45,19 @@ export function ROForm({ existing }: Props) {
     laborCharges: existing?.laborCharges || [],
     discount: existing?.discount || 0,
     gstInfo: existing?.gstInfo || { garageGSTIN: '', customerGSTIN: '', cgstRate: 9, sgstRate: 9 },
+    mechanicId: existing?.mechanicId || undefined,
+    isEstimate: existing?.isEstimate || false,
+    customerSignatureUrl: existing?.customerSignatureUrl || undefined,
+    media: existing?.media || [],
   });
+
+  useEffect(() => {
+    getMechanics().then(setMechanics).catch(console.error);
+  }, []);
 
   const update = (field: string, value: any) => setForm(prev => ({ ...prev, [field]: value }));
 
-  const addPart = () => {
-    update('spareParts', [...form.spareParts, { id: crypto.randomUUID(), partName: '', hsnCode: '', quantity: 1, rate: 0, total: 0 }]);
-  };
-
+  const addPart = () => update('spareParts', [...form.spareParts, { id: crypto.randomUUID(), partName: '', hsnCode: '', quantity: 1, rate: 0, total: 0 }]);
   const updatePart = (id: string, field: string, value: any) => {
     update('spareParts', form.spareParts.map(p => {
       if (p.id !== id) return p;
@@ -51,34 +66,64 @@ export function ROForm({ existing }: Props) {
       return updated;
     }));
   };
-
   const removePart = (id: string) => update('spareParts', form.spareParts.filter(p => p.id !== id));
 
-  const addLabor = () => {
-    update('laborCharges', [...form.laborCharges, { id: crypto.randomUUID(), description: '', amount: 0 }]);
-  };
-
-  const updateLabor = (id: string, field: string, value: any) => {
-    update('laborCharges', form.laborCharges.map(l => l.id === id ? { ...l, [field]: value } : l));
-  };
-
+  const addLabor = () => update('laborCharges', [...form.laborCharges, { id: crypto.randomUUID(), description: '', amount: 0 }]);
+  const updateLabor = (id: string, field: string, value: any) => update('laborCharges', form.laborCharges.map(l => l.id === id ? { ...l, [field]: value } : l));
   const removeLabor = (id: string) => update('laborCharges', form.laborCharges.filter(l => l.id !== id));
 
   const { partsTotal, laborTotal, subtotal, taxableAmount, cgstAmount, sgstAmount, totalGST, finalAmount } = calculateTotals(form.spareParts, form.laborCharges, form.discount, form.gstInfo);
 
-  const updateGST = (field: keyof GSTInfo, value: any) => {
-    update('gstInfo', { ...form.gstInfo, [field]: value });
+  const uploadBase64 = async (base64Str: string, path: string) => {
+    const base64Data = base64Str.replace(/^data:image\/\w+;base64,/, '');
+    const { error } = await supabase.storage.from('ro_media').upload(path, decode(base64Data), { contentType: 'image/png', upsert: true });
+    if (error) throw error;
+    return supabase.storage.from('ro_media').getPublicUrl(path).data.publicUrl;
+  };
+
+  const handlePickImage = async () => {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      quality: 0.5,
+      base64: true,
+    });
+    
+    if (!result.canceled && result.assets[0].base64) {
+      setSaving(true);
+      try {
+        const path = `photos/${crypto.randomUUID()}.png`;
+        const url = await uploadBase64(result.assets[0].base64, path);
+        const newMedia: ROMedia = { id: crypto.randomUUID(), repairOrderId: existing?.id || '', mediaUrl: url, mediaType: 'image', description: 'Vehicle Photo' };
+        update('media', [...(form.media || []), newMedia]);
+      } catch (err: any) {
+        Alert.alert('Upload Error', err.message);
+      } finally {
+        setSaving(false);
+      }
+    }
+  };
+
+  const handleSignature = async (signatureBase64: string) => {
+    setSaving(true);
+    try {
+      const path = `signatures/${crypto.randomUUID()}.png`;
+      const url = await uploadBase64(signatureBase64, path);
+      update('customerSignatureUrl', url);
+      setShowSignaturePad(false);
+    } catch (err: any) {
+      Alert.alert('Upload Error', err.message);
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleSave = async () => {
     if (!form.customerName || !form.mobileNumber || !form.vehicleNumber || !form.brand || !form.model) {
-      Alert.alert('Validation Error', 'Please fill all required fields (Name, Mobile, Vehicle No, Brand, Model)');
+      Alert.alert('Validation Error', 'Please fill all required fields');
       return;
     }
-    if (!user) {
-      Alert.alert('Error', 'You must be logged in');
-      return;
-    }
+    if (!user) return Alert.alert('Error', 'You must be logged in');
 
     setSaving(true);
     try {
@@ -86,20 +131,32 @@ export function ROForm({ existing }: Props) {
       if (isEdit && existing) {
         const updated = { ...existing, ...form, updatedAt: now };
         await updateRepairOrder(updated);
+        
+        // Save new media records if needed (assuming backend function handles this or we insert manually)
+        // For simplicity, we assume media is inserted here if not existing
+        if (form.media && form.media.length > 0) {
+           const newMedias = form.media.filter(m => m.repairOrderId === '');
+           if(newMedias.length > 0) {
+             const toInsert = newMedias.map(m => ({ repair_order_id: existing.id, media_url: m.mediaUrl, media_type: m.mediaType, description: m.description }));
+             await supabase.from('ro_media').insert(toInsert);
+           }
+        }
+        
         Alert.alert('Success', 'Repair Order updated');
         router.replace(`/orders/${existing.id}`);
       } else {
         const roNumber = await generateRONumber();
-        const order: RepairOrder = {
-          id: crypto.randomUUID(),
-          roNumber,
-          ...form,
-          createdAt: now,
-          updatedAt: now,
-        };
+        const roId = crypto.randomUUID();
+        const order: RepairOrder = { id: roId, roNumber, ...form, createdAt: now, updatedAt: now };
         await addRepairOrder(order, user.id);
-        Alert.alert('Success', `Repair Order ${order.roNumber} created`);
-        router.replace(`/orders/${order.id}`);
+        
+        if (form.media && form.media.length > 0) {
+           const toInsert = form.media.map(m => ({ repair_order_id: roId, media_url: m.mediaUrl, media_type: m.mediaType, description: m.description }));
+           await supabase.from('ro_media').insert(toInsert);
+        }
+        
+        Alert.alert('Success', `Order ${order.roNumber} created`);
+        router.replace(`/orders/${roId}`);
       }
     } catch (error: any) {
       Alert.alert('Error', error.message || 'Failed to save');
@@ -142,11 +199,18 @@ export function ROForm({ existing }: Props) {
         </Pressable>
       </View>
 
-      {isDelivered && (
-        <View className="bg-muted border border-border rounded-lg p-3 mb-6">
-          <Text className="text-sm text-muted-foreground">This order is delivered and locked for editing.</Text>
+      {/* Estimates Toggle */}
+      <View className="bg-card p-4 rounded-xl border border-border mb-4 flex-row justify-between items-center">
+        <View>
+          <Text className="text-lg font-semibold text-foreground">Estimate / Quotation</Text>
+          <Text className="text-sm text-muted-foreground">Mark as estimate before confirming repair</Text>
         </View>
-      )}
+        <Switch
+          value={form.isEstimate}
+          onValueChange={val => update('isEstimate', val)}
+          disabled={isDelivered}
+        />
+      </View>
 
       {/* Basic Info */}
       <View className="bg-card p-4 rounded-xl border border-border mb-4">
@@ -165,10 +229,30 @@ export function ROForm({ existing }: Props) {
 
       <View className="bg-card p-4 rounded-xl border border-border mb-4">
         <Text className="text-lg font-semibold text-foreground mb-4">Service Information</Text>
+        <View className="mb-4">
+          <Text className="text-sm font-medium mb-1.5 text-foreground">Assigned Mechanic</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} className="flex-row py-1">
+            <Pressable
+              onPress={() => update('mechanicId', undefined)}
+              className={`px-3 py-1.5 rounded-full border mr-2 ${!form.mechanicId ? 'bg-primary border-primary' : 'bg-transparent border-input'}`}
+            >
+              <Text className={!form.mechanicId ? 'text-white' : 'text-foreground'}>Unassigned</Text>
+            </Pressable>
+            {mechanics.map(m => (
+              <Pressable
+                key={m.id}
+                onPress={() => update('mechanicId', m.id)}
+                className={`px-3 py-1.5 rounded-full border mr-2 ${form.mechanicId === m.id ? 'bg-primary border-primary' : 'bg-transparent border-input'}`}
+              >
+                <Text className={form.mechanicId === m.id ? 'text-white' : 'text-foreground'}>{m.name}</Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+        </View>
+
         {isEdit && renderInput('Status (Open, In Progress, etc)', form.status, val => update('status', val))}
         {renderInput('Customer Complaints', form.customerComplaints, val => update('customerComplaints', val), '', 'default', true)}
         {renderInput('Service Details', form.serviceDetails, val => update('serviceDetails', val), '', 'default', true)}
-        {renderInput('Remarks', form.remarks, val => update('remarks', val), '', 'default', true)}
       </View>
 
       {/* Spare Parts */}
@@ -182,24 +266,17 @@ export function ROForm({ existing }: Props) {
             </Pressable>
           )}
         </View>
-
         {form.spareParts.length === 0 ? (
           <Text className="text-sm text-muted-foreground text-center py-2">No spare parts added</Text>
         ) : (
-          form.spareParts.map((p, index) => (
+          form.spareParts.map(p => (
             <View key={p.id} className="mb-4 bg-muted/50 p-3 rounded-lg border border-border/50">
               <TextInput className="w-full border border-input rounded-md px-3 h-10 bg-background mb-2" value={p.partName} onChangeText={val => updatePart(p.id, 'partName', val)} placeholder="Part name" editable={!isDelivered} />
               <View className="flex-row gap-x-2">
                 <TextInput className="flex-1 border border-input rounded-md px-3 h-10 bg-background" value={p.quantity.toString()} onChangeText={val => updatePart(p.id, 'quantity', Number(val) || 0)} placeholder="Qty" keyboardType="numeric" editable={!isDelivered} />
                 <TextInput className="flex-1 border border-input rounded-md px-3 h-10 bg-background" value={p.rate.toString()} onChangeText={val => updatePart(p.id, 'rate', Number(val) || 0)} placeholder="Rate" keyboardType="numeric" editable={!isDelivered} />
-                <View className="flex-1 justify-center items-end px-2">
-                  <Text className="font-mono font-medium">₹{p.total.toFixed(2)}</Text>
-                </View>
-                {!isDelivered && (
-                  <Pressable onPress={() => removePart(p.id)} className="justify-center px-2">
-                    <Trash2 size={18} color="#ef4444" />
-                  </Pressable>
-                )}
+                <View className="flex-1 justify-center items-end px-2"><Text className="font-mono font-medium">₹{p.total.toFixed(2)}</Text></View>
+                {!isDelivered && <Pressable onPress={() => removePart(p.id)} className="justify-center px-2"><Trash2 size={18} color="#ef4444" /></Pressable>}
               </View>
             </View>
           ))
@@ -217,21 +294,77 @@ export function ROForm({ existing }: Props) {
             </Pressable>
           )}
         </View>
-
         {form.laborCharges.length === 0 ? (
-          <Text className="text-sm text-muted-foreground text-center py-2">No labor charges added</Text>
+          <Text className="text-sm text-muted-foreground text-center py-2">No labor charges</Text>
         ) : (
           form.laborCharges.map(l => (
             <View key={l.id} className="flex-row gap-x-2 mb-2 items-center">
               <TextInput className="flex-[2] border border-input rounded-md px-3 h-10 bg-background" value={l.description} onChangeText={val => updateLabor(l.id, 'description', val)} placeholder="Description" editable={!isDelivered} />
               <TextInput className="flex-1 border border-input rounded-md px-3 h-10 bg-background" value={l.amount.toString()} onChangeText={val => updateLabor(l.id, 'amount', Number(val) || 0)} placeholder="Amount" keyboardType="numeric" editable={!isDelivered} />
-              {!isDelivered && (
-                <Pressable onPress={() => removeLabor(l.id)} className="px-2">
-                  <Trash2 size={18} color="#ef4444" />
-                </Pressable>
-              )}
+              {!isDelivered && <Pressable onPress={() => removeLabor(l.id)} className="px-2"><Trash2 size={18} color="#ef4444" /></Pressable>}
             </View>
           ))
+        )}
+      </View>
+
+      {/* Media Attachments */}
+      <View className="bg-card p-4 rounded-xl border border-border mb-4">
+        <View className="flex-row items-center justify-between mb-4">
+          <Text className="text-lg font-semibold text-foreground">Vehicle Photos</Text>
+          {!isDelivered && (
+            <Pressable onPress={handlePickImage} className="flex-row items-center border border-border px-3 py-1.5 rounded-md">
+              <Camera size={14} color="hsl(222.2 84% 4.9%)" />
+              <Text className="text-sm font-medium ml-1">Add Photo</Text>
+            </Pressable>
+          )}
+        </View>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} className="flex-row">
+          {form.media?.filter(m => m.mediaType === 'image').map((m, i) => (
+            <View key={m.id || i} className="mr-3 relative">
+              <Image source={{ uri: m.mediaUrl }} className="w-24 h-24 rounded-lg bg-muted" />
+            </View>
+          ))}
+          {form.media?.filter(m => m.mediaType === 'image').length === 0 && (
+            <Text className="text-sm text-muted-foreground">No photos attached.</Text>
+          )}
+        </ScrollView>
+      </View>
+
+      {/* Customer Signature */}
+      <View className="bg-card p-4 rounded-xl border border-border mb-4">
+        <View className="flex-row items-center justify-between mb-4">
+          <Text className="text-lg font-semibold text-foreground">Customer Signature</Text>
+          {!form.customerSignatureUrl && !isDelivered && (
+            <Pressable onPress={() => setShowSignaturePad(true)} className="flex-row items-center bg-primary px-3 py-1.5 rounded-md">
+              <PenTool size={14} color="white" />
+              <Text className="text-sm font-medium text-white ml-1">Sign Now</Text>
+            </Pressable>
+          )}
+        </View>
+        {form.customerSignatureUrl ? (
+          <Image source={{ uri: form.customerSignatureUrl }} className="w-full h-32 bg-muted rounded-lg" resizeMode="contain" />
+        ) : (
+          <Text className="text-sm text-muted-foreground">No signature captured.</Text>
+        )}
+        
+        {showSignaturePad && (
+          <View className="mt-4 h-64 border border-border rounded-lg overflow-hidden relative">
+            <SignatureScreen
+              ref={signatureRef}
+              onOK={handleSignature}
+              onEmpty={() => Alert.alert('Empty', 'Please sign before saving.')}
+              descriptionText="Sign above"
+              clearText="Clear"
+              confirmText="Save"
+              webStyle={`.m-signature-pad {box-shadow: none; border: none;} 
+                         .m-signature-pad--body {border: none;} 
+                         .m-signature-pad--footer {display: none;}`}
+            />
+            <View className="flex-row justify-between absolute bottom-2 left-2 right-2 px-2">
+               <Pressable onPress={() => signatureRef.current?.clearSignature()} className="bg-muted px-4 py-2 rounded-md"><Text className="text-foreground">Clear</Text></Pressable>
+               <Pressable onPress={() => signatureRef.current?.readSignature()} className="bg-primary px-4 py-2 rounded-md"><Text className="text-white">Save</Text></Pressable>
+            </View>
+          </View>
         )}
       </View>
 

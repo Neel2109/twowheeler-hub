@@ -5,7 +5,8 @@ import { getRepairOrderById, calculateTotals, deleteRepairOrder, getServiceHisto
 import { generateRepairOrderPDF } from '@/lib/pdf-generator';
 import { RepairOrder } from '@/types/repair-order';
 import { StatusBadge } from '@/components/StatusBadge';
-import { FileDown, Pencil, Trash2, ArrowLeft, History } from 'lucide-react-native';
+import { FileDown, Pencil, Trash2, ArrowLeft, History, MessageCircle } from 'lucide-react-native';
+import { Linking } from 'react-native';
 
 export default function OrderDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -71,6 +72,21 @@ export default function OrderDetail() {
     }
   };
 
+  const handleWhatsApp = async () => {
+    try {
+      const message = `Hi ${order.customerName},\n\nYour vehicle ${order.vehicleNumber} is currently: *${order.status}*.\nTotal estimate: ₹${finalAmount.toFixed(0)}.\n\nThank you for choosing Patidar Auto Care!`;
+      const url = `whatsapp://send?phone=91${order.mobileNumber}&text=${encodeURIComponent(message)}`;
+      const canOpen = await Linking.canOpenURL(url);
+      if (canOpen) {
+        await Linking.openURL(url);
+      } else {
+        Alert.alert('Error', 'WhatsApp is not installed on this device.');
+      }
+    } catch (e) {
+      Alert.alert('Error', 'Failed to open WhatsApp');
+    }
+  };
+
   return (
     <ScrollView className="flex-1 bg-background" contentContainerStyle={{ padding: 16 }}>
       <View className="flex-row items-center justify-between flex-wrap gap-y-3 mb-6">
@@ -86,6 +102,11 @@ export default function OrderDetail() {
         </View>
 
         <View className="flex-row gap-x-2">
+          <Pressable onPress={handleWhatsApp} className="flex-row items-center border border-border px-3 py-1.5 rounded-md bg-[#25D366]">
+            <MessageCircle size={16} color="white" className="mr-1" />
+            <Text className="text-sm font-medium text-white">Share</Text>
+          </Pressable>
+
           <Pressable onPress={handleDownloadPDF} className="flex-row items-center border border-border px-3 py-1.5 rounded-md bg-card">
             <FileDown size={16} color="hsl(222.2 84% 4.9%)" className="mr-1" />
             <Text className="text-sm font-medium text-foreground">PDF</Text>
